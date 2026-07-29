@@ -332,7 +332,7 @@ const rightStart = Math.PI+GAP_HALF_ANGLE; // just past the hub's north edge, fr
 for(let i=0;i<LOOP_LEN;i++){
   const a0=rightStart+i*STEP, a1=rightStart+(i+1)*STEP;
   const mid = midPoint(Rx,Ry,(LOOP_R_IN+LOOP_R_OUT)/2,(a0+a1)/2);
-  MASTER.push({idx:20+i, x:mid.x, y:mid.y, zone:'right', shade:i%2===0?'light':'dark', path:wedgePath(Rx,Ry,LOOP_R_IN,LOOP_R_OUT,a0,a1)});
+  MASTER.push({idx:20+i, x:mid.x, y:mid.y, zone:'right', shade:i%2===0?'dark':'light', path:wedgePath(Rx,Ry,LOOP_R_IN,LOOP_R_OUT,a0,a1)});
 }
 const INFINITE_PT = {x:Hx, y:Hy};
 
