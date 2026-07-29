@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nefesh — Prototype Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Spectral:ital,wght@0,400;0,600;1,400&family=Spectral+SC:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1C1712;
+    --parchment:#EAD9B4;
+    --parchment-dim:#d9c69c;
+    --wood-dark:#221712;
+    --wood:#3a2a1d;
+    --wood-light:#4d3826;
+    --rust:#a8471f;
+    --rust-light:#c25a2c;
+    --gold:#c9973f;
+    --gold-bright:#e0b25a;
+    --cream:#efe3c8;
+    --white-piece:#f4ecd8;
+    --black-piece:#141110;
+    --danger:#8a2e1f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:
+      radial-gradient(ellipse at 30% 0%, #4a3423 0%, transparent 60%),
+      linear-gradient(160deg, var(--wood-dark), var(--wood) 60%, var(--wood-dark));
+    font-family:'Spectral',serif;
+    color:var(--cream);
+    padding:22px;
+  }
+  h1.title{
+    font-family:'Rye',serif;
+    text-align:center;
+    font-size:42px;
+    letter-spacing:4px;
+    color:var(--gold-bright);
+    margin:0 0 2px 0;
+    text-shadow:0 2px 0 rgba(0,0,0,0.5);
+  }
+  .subtitle{
+    text-align:center;
+    font-style:italic;
+    color:var(--parchment-dim);
+    margin:0 0 20px 0;
+    font-size:14px;
+    letter-spacing:1px;
+  }
+  .app{
+    display:flex;
+    gap:22px;
+    max-width:1320px;
+    margin:0 auto;
+    align-items:flex-start;
+    flex-wrap:wrap;
+  }
+  .board-panel{
+    flex:1.5;
+    min-width:560px;
+    background:linear-gradient(180deg,var(--wood-light),var(--wood));
+    border:1px solid #5c422c;
+    border-radius:10px;
+    padding:14px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.4) inset, 0 4px 14px rgba(0,0,0,0.3);
+  }
+  .control-panel{
+    flex:1;
+    min-width:360px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .panel-box{
+    background:linear-gradient(180deg,var(--wood-light),var(--wood));
+    border:1px solid #5c422c;
+    border-radius:10px;
+    padding:14px 16px;
+  }
+  .panel-title{
+    font-family:'Spectral SC',serif;
+    letter-spacing:2px;
+    font-size:13px;
+    color:var(--gold);
+    margin:0 0 10px 0;
+    border-bottom:1px solid #5c422c;
+    padding-bottom:6px;
+  }
+  .row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .pill{
+    display:inline-block;
+    padding:4px 12px;
+    border-radius:20px;
+    font-size:13px;
+    font-weight:600;
+    border:1px solid var(--gold);
+  }
+  .pill.white{background:var(--white-piece); color:var(--ink);}
+  .pill.black{background:var(--black-piece); color:var(--cream); border-color:#555;}
+  button{
+    font-family:'Spectral',serif;
+    font-weight:600;
+    background:var(--rust);
+    color:var(--cream);
+    border:1px solid #6e2f16;
+    border-radius:6px;
+    padding:8px 14px;
+    cursor:pointer;
+    font-size:13px;
+    letter-spacing:0.4px;
+    transition:background 0.15s, transform 0.1s;
+  }
+  button:hover:not(:disabled){background:var(--rust-light);}
+  button:active:not(:disabled){transform:translateY(1px);}
+  button:disabled{background:#5a4a3c; color:#93867a; cursor:not-allowed; border-color:#4a3c30;}
+  .dice-row{display:flex; gap:10px; align-items:center; margin:8px 0;}
+  .die{
+    width:42px;height:42px;border-radius:8px;
+    background:var(--parchment); color:var(--ink);
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; font-weight:700; border:1px solid #8a7757;
+    box-shadow:0 2px 4px rgba(0,0,0,0.4);
+  }
+  .move-options{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
+  .move-chip{
+    background:#2c2018; border:1px solid var(--gold); color:var(--cream);
+    border-radius:5px; padding:3px 8px; font-size:12px;
+  }
+  .bench-section{margin-bottom:8px;}
+  .bench-list{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
+  .piece-btn{
+    display:flex; flex-direction:column; align-items:center;
+    width:52px; padding:5px 2px;
+    border-radius:6px; border:1px solid #6e5a42;
+    background:#2c2018; color:var(--cream);
+    cursor:pointer; font-size:10px; line-height:1.2;
+  }
+  .piece-btn .abbr{font-size:15px; font-weight:700; font-family:'Spectral SC';}
+  .piece-btn.selected{border-color:var(--gold-bright); box-shadow:0 0 0 2px var(--gold-bright);}
+  .piece-btn.captured{opacity:0.35; text-decoration:line-through; cursor:not-allowed;}
+  .piece-btn.onboard{border-color:#3f7a4a;}
+  .piece-btn:disabled, .piece-btn.disabled{opacity:0.4; cursor:not-allowed;}
+  .legal-move-space{cursor:pointer;}
+  #log{
+    max-height:130px; overflow-y:auto; font-size:12px;
+    color:var(--parchment-dim); display:flex; flex-direction:column; gap:3px;
+    padding-right:4px;
+  }
+  details summary{cursor:pointer; color:var(--gold); font-size:12px; margin-bottom:6px;}
+  details p, details li{font-size:12px; color:var(--parchment-dim); line-height:1.5;}
+  .overlay{
+    position:fixed; inset:0; background:rgba(10,6,4,0.82);
+    display:none; align-items:center; justify-content:center; z-index:50;
+  }
+  .overlay.show{display:flex;}
+  .overlay-box{
+    background:linear-gradient(180deg,var(--wood-light),var(--wood-dark));
+    border:2px solid var(--gold); border-radius:12px;
+    padding:36px 48px; text-align:center; max-width:420px;
+  }
+  .overlay-box h2{font-family:'Rye'; color:var(--gold-bright); font-size:32px; margin:0 0 10px;}
+  .overlay-box p{color:var(--parchment); font-size:14px;}
+  small.hint{color:#a89a86; font-size:11px;}
+</style>
+</head>
+<body>
+
+<h1 class="title">NEFESH</h1>
+<p class="subtitle">a prototype board for playtesting — click to place, move, and capture</p>
+
+<div class="app">
+
+  <div class="board-panel">
+    <svg id="board-svg" viewBox="0 0 840 600" style="width:100%; height:auto;"></svg>
+  </div>
+
+  <div class="control-panel">
+
+    <div class="panel-box">
+      <div class="panel-title">ROUND</div>
+      <div class="row">
+        <div>Round <b id="round-num">1</b></div>
+        <div>Now acting: <span id="acting-pill" class="pill white">White</span></div>
+      </div>
+      <div class="dice-row">
+        <div class="die" id="die1">–</div>
+        <div class="die" id="die2">–</div>
+        <button id="roll-btn">Roll dice</button>
+      </div>
+      <div id="move-options" class="move-options"></div>
+      <div class="row" style="margin-top:10px;">
+        <button id="pass-btn" disabled>Pass (no legal action)</button>
+        <span id="turn-status" style="font-size:12px; color:var(--parchment-dim);"></span>
+      </div>
+    </div>
+
+    <div class="panel-box">
+      <div class="panel-title">WHITE PIECES</div>
+      <div class="bench-list" id="white-pieces"></div>
+      <div class="row" style="margin-top:8px; font-size:12px;">
+        <span>Body captured: <b id="white-body-flag">no</b></span>
+      </div>
+    </div>
+
+    <div class="panel-box">
+      <div class="panel-title">BLACK PIECES</div>
+      <div class="bench-list" id="black-pieces"></div>
+      <div class="row" style="margin-top:8px; font-size:12px;">
+        <span>Body captured: <b id="black-body-flag">no</b></span>
+      </div>
+    </div>
+
+    <div class="panel-box">
+      <div class="panel-title">LOG</div>
+      <div id="log"></div>
+    </div>
+
+    <div class="panel-box">
+      <details>
+        <summary>Designer notes / assumptions in this prototype</summary>
+        <p>A few judgment calls I made to get this playable — flag anything that's wrong and I'll adjust:</p>
+        <ul>
+          <li>The 4 central-ring spaces are modeled as a single set passed through once per lap (not twice), sitting between the two loops in the sequence. If Nefesh's real geometry passes through center twice per figure-8 lap, this needs revising.</li>
+          <li>Bonus is applied as "0 up to the piece's bonus," added to whichever dice value (sum / difference / single die) you pick.</li>
+          <li>Placement can happen on your turn even after the dice are rolled (rules say placement must happen before the roll — simplified here so the turn structure stays simple; you can self-enforce the stricter timing at the table).</li>
+          <li>The Soul's Infinite entry requires landing on an exact target space; overshooting keeps it circling in the endgame zone until an exact roll lands it there.</li>
+          <li>A non-Soul piece that would complete a full circuit is captured automatically instead of completing the move.</li>
+        </ul>
+      </details>
+    </div>
+
+  </div>
+</div>
+
+<div class="overlay" id="win-overlay">
+  <div class="overlay-box">
+    <h2 id="win-title">White wins</h2>
+    <p id="win-reason"></p>
+    <button id="reset-btn">New game</button>
+  </div>
+</div>
+
+<script>
+const TRACK_LEN = 36;
+const LOOP_LEN = 16;
+
+// ---------- piece definitions ----------
+const PIECE_DEFS = [
+  {id:'creature', label:'Creature', abbr:'C', category:'race', bonus:0},
+  {id:'dwarf',    label:'Dwarf',    abbr:'D', category:'race', bonus:1},
+  {id:'man',      label:'Man',      abbr:'M', category:'race', bonus:2},
+  {id:'elf',      label:'Elf',      abbr:'E', category:'race', bonus:3},
+  {id:'mind',     label:'Mind',     abbr:'Mi', category:'person', bonus:1},
+  {id:'will',     label:'Will',     abbr:'W', category:'person', bonus:2},
+  {id:'body',     label:'Body',     abbr:'B', category:'person', bonus:3},
+  {id:'soul',     label:'Soul',     abbr:'S', category:'person', bonus:0},
+];
+function getDef(id){ return PIECE_DEFS.find(p=>p.id===id); }
+
+// ---------- geometry ----------
+// Two loops rendered as connected annulus wedges (like a checkerboard ring).
+// The hub is a SIMPLE circle divided into 4 quadrants by a cross (matching the
+// approved mockup and the original drawing) - NOT ribbons, not a bowtie.
+// The diagonal crossing (16-18, 17-19) is shown only as a symbolic X icon
+// inside the Infinite (see renderBoard), not by the shape of the quadrants.
+//
+// To connect cleanly to the loops with no gap: the hub circle is sized to
+// reach at least as far as the outer corners of the specific loop wedges
+// (15, 0, 20, 35) that border it - verified by calculation below, not
+// guessed - and is drawn UNDERNEATH the loops, so the loop wedges keep their
+// normal shape and the hub simply shows through in the small gap that would
+// otherwise appear at the seam.
+const Hx=420, Hy=300;
+const HUB_R_OUT=75; // the hub sits on top now (no clipping)
+const HUB_R_IN=36;
+const INF_R=39;
+const LOOP_R_OUT=175, LOOP_R_IN=130;
+const LOOP_GAP=14; // the two loops are placed almost touching - only this much space between their nearest edges
+const Lx=Hx-LOOP_R_OUT-LOOP_GAP/2, Ly=Hy;
+const Rx=Hx+LOOP_R_OUT+LOOP_GAP/2, Ry=Hy;
+
+function wedgePath(cx,cy,rIn,rOut,a0,a1){
+  const large = (a1-a0) > Math.PI ? 1 : 0;
+  const p = (r,a)=>({x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)});
+  const o0=p(rOut,a0), o1=p(rOut,a1), i1=p(rIn,a1), i0=p(rIn,a0);
+  return `M ${o0.x} ${o0.y} A ${rOut} ${rOut} 0 ${large} 1 ${o1.x} ${o1.y} `+
+         `L ${i1.x} ${i1.y} A ${rIn} ${rIn} 0 ${large} 0 ${i0.x} ${i0.y} Z`;
+}
+function midPoint(cx,cy,r,a){ return {x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)}; }
+
+// master track: 0-15 left loop, 16-19 hub, 20-35 right loop
+const MASTER = [];
+// The hub's footprint covers roughly 54 degrees of each loop's circle (verified by
+// checking exactly where the loop's boundary clears the hub's radius, with a safety
+// margin). That arc is treated as not belonging to the loop at all - the 16 real
+// spaces are sized to fit the remaining ~306 degrees, not the full 360.
+const GAP_HALF_ANGLE = 23 * Math.PI/180; // tight enough that the hub slightly overlaps the outer tip of the adjacent space (no visible gap), since the hub is drawn on top anyway
+const VISIBLE_SPAN = (2*Math.PI) - 2*GAP_HALF_ANGLE;
+const STEP = VISIBLE_SPAN/LOOP_LEN;
+
+const leftStart = GAP_HALF_ANGLE; // just past the hub's south edge, from the left loop's own center
+for(let i=0;i<LOOP_LEN;i++){
+  const a0=leftStart+i*STEP, a1=leftStart+(i+1)*STEP;
+  const mid = midPoint(Lx,Ly,(LOOP_R_IN+LOOP_R_OUT)/2,(a0+a1)/2);
+  MASTER.push({idx:i, x:mid.x, y:mid.y, zone:'left', shade:i%2===0?'light':'dark', path:wedgePath(Lx,Ly,LOOP_R_IN,LOOP_R_OUT,a0,a1)});
+}
+const hubQuadrants = [
+  {idx:16, a0:Math.PI, a1:Math.PI*1.5, half:'light', isStart:'black'},   // NW
+  {idx:17, a0:Math.PI*1.5, a1:Math.PI*2, half:'light', isStart:null},    // NE
+  {idx:18, a0:0, a1:Math.PI*0.5, half:'dark', isStart:'white'},          // SE
+  {idx:19, a0:Math.PI*0.5, a1:Math.PI, half:'dark', isStart:null},       // SW
+];
+hubQuadrants.forEach(q=>{
+  const mid = midPoint(Hx,Hy,(HUB_R_IN+HUB_R_OUT)/2,(q.a0+q.a1)/2);
+  MASTER.push({idx:q.idx, x:mid.x, y:mid.y, zone:'hub', half:q.half, isStart:q.isStart,
+    path: wedgePath(Hx,Hy,HUB_R_IN,HUB_R_OUT,q.a0,q.a1)});
+});
+const rightStart = Math.PI+GAP_HALF_ANGLE; // just past the hub's north edge, from the right loop's own center
+for(let i=0;i<LOOP_LEN;i++){
+  const a0=rightStart+i*STEP, a1=rightStart+(i+1)*STEP;
+  const mid = midPoint(Rx,Ry,(LOOP_R_IN+LOOP_R_OUT)/2,(a0+a1)/2);
+  MASTER.push({idx:20+i, x:mid.x, y:mid.y, zone:'right', shade:i%2===0?'light':'dark', path:wedgePath(Rx,Ry,LOOP_R_IN,LOOP_R_OUT,a0,a1)});
+}
+const INFINITE_PT = {x:Hx, y:Hy};
+
+
+
+// The confirmed path: Black's one full circuit, in order. The hub isn't a simple ring —
+// it's the figure-8's true crossing point, so 16 connects to 18 and 17 connects to 19
+// (diagonal threads), not to their visually-adjacent quadrant neighbors.
+const PATH_ORDER = [16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0,19,17,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,18];
+const START_MASTER = {white:18, black:16};
+function pathToMaster(color, progress){
+  const p = ((progress % TRACK_LEN)+TRACK_LEN)%TRACK_LEN;
+  if(color==='black') return PATH_ORDER[p];
+  return PATH_ORDER[((TRACK_LEN-1-p)%TRACK_LEN+TRACK_LEN)%TRACK_LEN];
+}
+
+// ---------- state ----------
+function freshPieces(){
+  const obj={};
+  PIECE_DEFS.forEach(d=>{ obj[d.id] = {status:'bench', progress:0, completedCircuit:false}; });
+  return obj;
+}
+let state;
+function resetState(){
+  state = {
+    round:1,
+    firstMover:'white',
+    dice:null, // {d1,d2, options:[...]}
+    rolled:false,
+    acted:{white:false, black:false},
+    selected:null, // {color, pieceId}
+    bodyCaptured:{white:false, black:false},
+    roundsWithNoBodyCaptured:0,
+    winner:null,
+    winReason:'',
+    isDraw:false,
+    log:[],
+    pieces:{ white:freshPieces(), black:freshPieces() }
+  };
+}
+resetState();
+
+function currentMover(){
+  const order = state.firstMover==='white' ? ['white','black'] : ['black','white'];
+  if(!state.acted[order[0]]) return order[0];
+  if(!state.acted[order[1]]) return order[1];
+  return null; // round complete
+}
+
+function log(msg){
+  state.log.unshift(msg);
+  if(state.log.length>60) state.log.pop();
+}
+
+// ---------- board occupancy ----------
+function occupantsAtMaster(masterIdx){
+  const res=[];
+  for(const color of ['white','black']){
+    for(const d of PIECE_DEFS){
+      const p = state.pieces[color][d.id];
+      if(p.status==='onboard'){
+        const m = pathToMaster(color,p.progress);
+        if(m===masterIdx) res.push({color, pieceId:d.id});
+      }
+    }
+  }
+  return res;
+}
+
+// ---------- legal move computation ----------
+function diceBaseOptions(){
+  if(!state.dice) return [];
+  const {d1,d2} = state.dice;
+  const set = new Set([d1,d2,d1+d2,Math.abs(d1-d2)]);
+  return [...set].filter(v=>v>0);
+}
+
+function getLegalMoves(color, pieceId){
+  if(state.winner) return [];
+  const def = getDef(pieceId);
+  const p = state.pieces[color][pieceId];
+  if(p.status!=='onboard' || !state.dice) return [];
+  const bases = diceBaseOptions();
+  const deltaMagnitudes = new Set();
+  bases.forEach(b=>{ for(let bonus=0; bonus<=def.bonus; bonus++){ deltaMagnitudes.add(b+bonus); } });
+  const deltas = new Set();
+  deltaMagnitudes.forEach(v=>{
+    deltas.add(v);
+    if(def.category==='person') deltas.add(-v);
+  });
+
+  const legal=[];
+  const oppColor = color==='white'?'black':'white';
+
+  deltas.forEach(delta=>{
+    const newProgress = p.progress + delta;
+
+    if(def.id!=='soul'){
+      if(delta<0 && newProgress<0) return; // can't pass own start backward
+      if(newProgress>=TRACK_LEN){
+        legal.push({delta, newProgress, kind:'self-lap-capture', masterIdx: pathToMaster(color, newProgress)});
+        return;
+      }
+      const masterIdx = pathToMaster(color, newProgress);
+      const occ = occupantsAtMaster(masterIdx);
+      const oppSoulThere = occ.some(o=>o.color===oppColor && o.pieceId==='soul');
+      if(oppSoulThere && !state.bodyCaptured[oppColor]) return;
+      legal.push({delta, newProgress, kind:'normal', masterIdx, occ});
+      return;
+    }
+
+    // SOUL - no separate "endgame zone": the Soul moves like an ordinary Person piece
+    // the whole time, with full normal capture rules everywhere, except for two
+    // special cases: landing on EXACTLY 36 (an absolute count from its own start,
+    // not a repeating board position) substitutes as entering the Infinite once its
+    // own Body is captured; and once it has completed a first full circuit, moving
+    // back past its own actual starting point (progress going below 0) gets it
+    // captured instead of blocked.
+    if(!p.completedCircuit && delta<0 && newProgress<0) return; // bounded like a normal Person piece until its first circuit is complete
+
+    if(newProgress === TRACK_LEN && state.bodyCaptured[color]){
+      legal.push({delta, newProgress, kind:'soul-win', masterIdx: pathToMaster(color, newProgress)});
+      return;
+    }
+    if(p.completedCircuit && newProgress < 0){
+      legal.push({delta, newProgress, kind:'soul-overshoot-capture', masterIdx: pathToMaster(color, newProgress)});
+      return;
+    }
+    {
+      const masterIdx = pathToMaster(color, newProgress);
+      const occ = occupantsAtMaster(masterIdx);
+      const oppSoulThere = occ.some(o=>o.color===oppColor && o.pieceId==='soul');
+      if(oppSoulThere && !state.bodyCaptured[oppColor]) return;
+      legal.push({delta, newProgress, kind:'normal', masterIdx, occ});
+    }
+  });
+
+  return legal;
+}
+
+function hasAnyLegalAction(color){
+  const bench = PIECE_DEFS.some(d=> state.pieces[color][d.id].status==='bench');
+  if(bench) return true;
+  return PIECE_DEFS.some(d=>{
+    const p = state.pieces[color][d.id];
+    return p.status==='onboard' && getLegalMoves(color,d.id).length>0;
+  });
+}
+
+// ---------- actions ----------
+function placePiece(color, pieceId){
+  const mover = currentMover();
+  if(mover!==color || state.winner) return;
+  const p = state.pieces[color][pieceId];
+  if(p.status!=='bench') return;
+  const startMaster = START_MASTER[color];
+  const occ = occupantsAtMaster(startMaster).filter(o=>o.color===color);
+  occ.forEach(o=>{
+    state.pieces[o.color][o.pieceId].status='captured';
+    log(`${color} self-captures ${getDef(o.pieceId).label} while placing on the starting spot.`);
+    if(o.pieceId==='soul'){
+      const winner = o.color==='white' ? 'black' : 'white';
+      state.winner = winner;
+      state.winReason = `${color} self-captured its own Soul while placing a piece - ${winner} wins.`;
+    }
+  });
+  p.status='onboard';
+  p.progress=0;
+  log(`${color==='white'?'White':'Black'} places ${getDef(pieceId).label} on the starting spot.`);
+  finishAction(color);
+}
+
+function performMove(color, pieceId, move){
+  const p = state.pieces[color][pieceId];
+  const def = getDef(pieceId);
+
+  if(move.kind==='self-lap-capture'){
+    p.status='captured';
+    log(`${def.label} (${color}) completes a full circuit and is captured.`);
+  } else if(move.kind==='soul-win'){
+    p.progress = move.newProgress;
+    state.winner = color;
+    state.winReason = `${color==='white'?'White':'Black'}'s Soul entered the Infinite.`;
+  } else if(move.kind==='soul-overshoot-capture'){
+    p.status='captured';
+    const winner = color==='white' ? 'black' : 'white';
+    state.winner = winner;
+    state.winReason = `${def.label} (${color})'s Soul circled all the way back past its start and was lost - ${winner} wins.`;
+  } else if(move.kind==='normal'){
+    p.progress = move.newProgress;
+    if(pieceId==='soul' && move.newProgress>=TRACK_LEN){
+      p.completedCircuit = true; // permanent, one-time - never unset once achieved
+    }
+    const oppColor = color==='white'?'black':'white';
+    move.occ.forEach(o=>{
+      state.pieces[o.color][o.pieceId].status='captured';
+      if(o.pieceId==='body'){ state.bodyCaptured[o.color]=true; }
+      if(o.color===color){
+        log(`${color} self-captures its own ${getDef(o.pieceId).label}.`);
+      } else {
+        log(`${color==='white'?'White':'Black'}'s ${def.label} captures ${o.color}'s ${getDef(o.pieceId).label}.`);
+      }
+      if(o.pieceId==='soul'){
+        // Losing your Soul ends the game no matter how it happened - the
+        // player who OWNED that soul loses, whether it was the opponent's
+        // capture or a self-capture.
+        const winner = o.color==='white' ? 'black' : 'white';
+        state.winner = winner;
+        state.winReason = o.color===color
+          ? `${color} self-captured its own Soul - ${winner} wins.`
+          : `${color==='white'?'White':'Black'} captured the opposing Soul.`;
+      }
+    });
+  }
+  finishAction(color);
+}
+
+const STALEMATE_ROUNDS_NO_BODY = 80; // rounds with neither Body captured before it's called a draw
+
+function finishAction(color){
+  state.acted[color]=true;
+  state.selected=null;
+  render();
+  if(state.winner){ return; }
+  if(currentMover()===null){
+    // round complete -> new round
+    if(!state.bodyCaptured.white && !state.bodyCaptured.black){
+      state.roundsWithNoBodyCaptured++;
+      if(state.roundsWithNoBodyCaptured >= STALEMATE_ROUNDS_NO_BODY){
+        state.winner = 'draw';
+        state.isDraw = true;
+        state.winReason = `${STALEMATE_ROUNDS_NO_BODY} rounds have passed with neither player's Body captured - the game is a draw.`;
+        render();
+        return;
+      }
+    } else {
+      state.roundsWithNoBodyCaptured = 0;
+    }
+    state.round += 1;
+    state.firstMover = state.firstMover==='white' ? 'black' : 'white';
+    state.acted = {white:false, black:false};
+    state.dice=null;
+    render();
+  }
+}
+
+// ---------- rendering ----------
+const svg = document.getElementById('board-svg');
+function el(tag,attrs){
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function render(){
+  renderBoard();
+  renderControls();
+  renderBench('white');
+  renderBench('black');
+  document.getElementById('white-body-flag').textContent = state.bodyCaptured.white?'yes':'no';
+  document.getElementById('black-body-flag').textContent = state.bodyCaptured.black?'yes':'no';
+  const logDiv = document.getElementById('log');
+  logDiv.innerHTML = state.log.map(l=>`<div>• ${l}</div>`).join('');
+
+  if(state.winner){
+    document.getElementById('win-overlay').classList.add('show');
+    document.getElementById('win-title').textContent = state.isDraw ? 'Draw' : `${state.winner==='white'?'White':'Black'} wins`;
+    document.getElementById('win-reason').textContent = state.winReason;
+  } else {
+    document.getElementById('win-overlay').classList.remove('show');
+  }
+}
+
+function splitDoubleArrow(cx,cy,blackAngle,halfLen){
+  const d={x:Math.cos(blackAngle),y:Math.sin(blackAngle)};
+  const p={x:-d.y,y:d.x};
+  const shaftHW=halfLen*0.16, headHW=halfLen*0.40, headLenFrac=0.34;
+  function pt(t,hw){
+    const base={x:cx+d.x*t*halfLen, y:cy+d.y*t*halfLen};
+    return {c:base, L:{x:base.x+p.x*hw,y:base.y+p.y*hw}, R:{x:base.x-p.x*hw,y:base.y-p.y*hw}};
+  }
+  const tipB=pt(1,0).c, baseB=pt(1-headLenFrac,shaftHW), barbB=pt(1-headLenFrac,headHW);
+  const tipW=pt(-1,0).c, baseW=pt(-(1-headLenFrac),shaftHW), barbW=pt(-(1-headLenFrac),headHW);
+  const cSplit=pt(0,shaftHW);
+  const g=el('g',{});
+  g.appendChild(el('polygon',{points:`${cSplit.L.x},${cSplit.L.y} ${baseB.L.x},${baseB.L.y} ${barbB.L.x},${barbB.L.y} ${tipB.x},${tipB.y} ${barbB.R.x},${barbB.R.y} ${baseB.R.x},${baseB.R.y} ${cSplit.R.x},${cSplit.R.y}`, fill:'#141110'}));
+  g.appendChild(el('polygon',{points:`${cSplit.L.x},${cSplit.L.y} ${baseW.L.x},${baseW.L.y} ${barbW.L.x},${barbW.L.y} ${tipW.x},${tipW.y} ${barbW.R.x},${barbW.R.y} ${baseW.R.x},${baseW.R.y} ${cSplit.R.x},${cSplit.R.y}`, fill:'#e9dcc0'}));
+  g.appendChild(el('polygon',{points:`${tipB.x},${tipB.y} ${barbB.L.x},${barbB.L.y} ${baseB.L.x},${baseB.L.y} ${cSplit.L.x},${cSplit.L.y} ${baseW.L.x},${baseW.L.y} ${barbW.L.x},${barbW.L.y} ${tipW.x},${tipW.y} ${barbW.R.x},${barbW.R.y} ${baseW.R.x},${baseW.R.y} ${cSplit.R.x},${cSplit.R.y} ${baseB.R.x},${baseB.R.y} ${barbB.R.x},${barbB.R.y}`, fill:'none', stroke:'#3a2a1d','stroke-width':1.3}));
+  return g;
+}
+
+function renderBoard(){
+  svg.innerHTML='';
+
+  let legalTargets = {};
+  let winMove = null;
+  if(state.selected){
+    const moves = getLegalMoves(state.selected.color, state.selected.pieceId);
+    moves.forEach(m=>{
+      if(m.kind==='soul-win'){ winMove = m; return; } // handled separately - highlighted on the Infinite itself, not the board space it happens to share
+      if(m.masterIdx!==undefined) legalTargets[m.masterIdx] = m;
+    });
+  }
+
+  // Step 2 of this pass: the hub now moves to the front - drawn last, fully
+  // on top, with no clipping - so it completely covers whatever loop material
+  // sits underneath it at the seam, instead of the hub being the one cut back.
+  const renderOrder = [...MASTER.filter(s=>s.zone!=='hub'), ...MASTER.filter(s=>s.zone==='hub')];
+  renderOrder.forEach(sp=>{
+    const isHub = sp.zone==='hub';
+    // outside the hub, spaces always alternate; inside the hub, top pair is light and bottom pair is dark (not alternating)
+    const fill = isHub ? (sp.half==='light' ? '#e9dcc0' : '#181410') : (sp.shade==='dark' ? '#181410' : '#e9dcc0');
+    const g = el('g',{});
+    const wedgeAttrs = {d:sp.path, fill, stroke:'#5c422c','stroke-width':1.6};
+    const wedge = el('path',wedgeAttrs);
+    g.appendChild(wedge);
+    if(isHub && sp.isStart){
+      const dotColor = sp.isStart==='white' ? '#f4ecd8' : '#141110';
+      g.appendChild(el('circle',{cx:sp.x, cy:sp.y, r:7, fill:dotColor, stroke:'#8a7757','stroke-width':1.2}));
+    }
+    // number label (matches this space's internal ID, for giving feedback)
+    const labelDark = fill==='#e9dcc0';
+    const labelY = (isHub && sp.isStart) ? sp.y+15 : sp.y+4;
+    const numLabel = el('text',{x:sp.x, y:labelY, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill: labelDark?'#181410':'#e9dcc0', 'pointer-events':'none'});
+    numLabel.textContent = sp.idx;
+    g.appendChild(numLabel);
+    if(legalTargets[sp.idx]){
+      const ringAttrs = {d:sp.path, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3};
+      const ring = el('path',ringAttrs);
+      ring.classList.add('legal-move-space');
+      const handler = ()=>{
+        const mover = currentMover();
+        if(mover!==state.selected.color) return;
+        performMove(state.selected.color, state.selected.pieceId, legalTargets[sp.idx]);
+      };
+      ring.addEventListener('click',handler);
+      g.style.cursor='pointer';
+      g.addEventListener('click',handler);
+      g.appendChild(ring);
+    }
+    svg.appendChild(g);
+  });
+
+  // infinite: one plain circle, with the X icon (two bicolor crossing arrows) inside it
+  const infG = el('g',{});
+  infG.appendChild(el('circle',{cx:INFINITE_PT.x, cy:INFINITE_PT.y, r:INF_R, fill:'#6b4a35', stroke:'#5c422c','stroke-width':2}));
+  if(winMove){
+    const winRing = el('circle',{cx:INFINITE_PT.x, cy:INFINITE_PT.y, r:INF_R+8, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3});
+    winRing.classList.add('legal-move-space');
+    const handler = ()=>{
+      const mover = currentMover();
+      if(mover!==state.selected.color) return;
+      performMove(state.selected.color, state.selected.pieceId, winMove);
+    };
+    winRing.addEventListener('click',handler);
+    infG.style.cursor='pointer';
+    infG.addEventListener('click',handler);
+    infG.appendChild(winRing);
+  }
+  const arrowHalfLen = INF_R*0.78;
+  infG.appendChild(splitDoubleArrow(INFINITE_PT.x, INFINITE_PT.y, 225*Math.PI/180, arrowHalfLen)); // 16 <-> 18
+  infG.appendChild(splitDoubleArrow(INFINITE_PT.x, INFINITE_PT.y, 315*Math.PI/180, arrowHalfLen)); // 17 <-> 19
+  infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+INF_R+16, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill:'var(--gold-bright)'})).textContent='INF';
+  svg.appendChild(infG);
+
+  // pieces
+  ['white','black'].forEach(color=>{
+    PIECE_DEFS.forEach(def=>{
+      const p = state.pieces[color][def.id];
+      if(p.status!=='onboard') return;
+      const m = pathToMaster(color, p.progress);
+      const pt = {x: MASTER[ MASTER.findIndex(s=>s.idx===m) ].x, y: MASTER[ MASTER.findIndex(s=>s.idx===m) ].y };
+      const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
+      const g = el('g',{style:'cursor:pointer'});
+      const fill = color==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
+      const textColor = color==='white' ? '#1C1712' : '#efe3c8';
+      g.appendChild(el('circle',{cx:pt.x, cy:pt.y, r:12, fill, stroke: isSel?'var(--gold-bright)':'#8a7757', 'stroke-width': isSel?3:1.4}));
+      const t = el('text',{x:pt.x, y:pt.y+4, 'text-anchor':'middle', 'font-size':10.5, fill:textColor, 'font-weight':'700'});
+      t.textContent = def.abbr;
+      g.appendChild(t);
+      g.addEventListener('click',(e)=>{
+        e.stopPropagation();
+        const mover = currentMover();
+        if(mover!==color || state.winner) return;
+        if(!state.dice){ return; }
+        state.selected = isSel? null : {color, pieceId:def.id};
+        render();
+      });
+      svg.appendChild(g);
+    });
+  });
+}
+
+function renderBench(color){
+  const wrap = document.getElementById(color+'-pieces');
+  wrap.innerHTML='';
+  const mover = currentMover();
+  PIECE_DEFS.forEach(def=>{
+    const p = state.pieces[color][def.id];
+    const btn = document.createElement('div');
+    btn.className='piece-btn';
+    if(p.status==='captured') btn.classList.add('captured');
+    if(p.status==='onboard') btn.classList.add('onboard');
+    if(state.selected && state.selected.color===color && state.selected.pieceId===def.id) btn.classList.add('selected');
+    const bonusLabel = def.id==='soul' ? '∞' : ('+'+def.bonus);
+    let statusText = p.status;
+    if(def.id==='soul' && p.status==='onboard' && p.completedCircuit){
+      const remaining = TRACK_LEN - p.progress;
+      statusText = state.bodyCaptured[color]
+        ? `needs exactly ${remaining>0?'+':''}${remaining} to win`
+        : `own Body not yet captured - can't enter Infinite yet`;
+    }
+    btn.innerHTML = `<div class="abbr">${def.abbr}</div><div>${def.label}</div><div>${bonusLabel}</div><div style="opacity:0.7;">${statusText}</div>`;
+    if(p.status==='bench'){
+      const canAct = mover===color && !state.winner;
+      if(!canAct) btn.classList.add('disabled');
+      btn.addEventListener('click', ()=>{ if(canAct) placePiece(color, def.id); });
+    } else if(p.status==='onboard'){
+      btn.addEventListener('click', ()=>{
+        if(mover!==color || state.winner || !state.dice) return;
+        const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
+        state.selected = isSel? null : {color, pieceId:def.id};
+        render();
+      });
+    }
+    wrap.appendChild(btn);
+  });
+}
+
+function renderControls(){
+  document.getElementById('round-num').textContent = state.round;
+  const mover = currentMover();
+  const pill = document.getElementById('acting-pill');
+  if(state.winner){
+    pill.textContent = 'Game over';
+    pill.className='pill black';
+  } else if(mover){
+    pill.textContent = mover==='white'?'White':'Black';
+    pill.className = 'pill '+mover;
+  }
+  document.getElementById('die1').textContent = state.dice? state.dice.d1 : '–';
+  document.getElementById('die2').textContent = state.dice? state.dice.d2 : '–';
+
+  const opts = diceBaseOptions();
+  document.getElementById('move-options').innerHTML = opts.length
+    ? opts.map(o=>`<span class="move-chip">${o}</span>`).join('')
+    : '';
+
+  const rollBtn = document.getElementById('roll-btn');
+  rollBtn.disabled = !!state.dice || !!state.winner;
+
+
+  const passBtn = document.getElementById('pass-btn');
+  const status = document.getElementById('turn-status');
+  if(!state.winner && mover && state.dice && !hasAnyLegalAction(mover)){
+    passBtn.disabled=false;
+    status.textContent = `${mover} has no legal placement or move.`;
+  } else {
+    passBtn.disabled=true;
+    status.textContent = state.dice ? '' : 'Roll to begin the round.';
+  }
+}
+
+document.getElementById('roll-btn').addEventListener('click', ()=>{
+  const d1 = 1+Math.floor(Math.random()*6);
+  const d2 = 1+Math.floor(Math.random()*6);
+  state.dice = {d1,d2};
+  log(`Round ${state.round}: dice rolled — ${d1} and ${d2}.`);
+  render();
+});
+
+document.getElementById('pass-btn').addEventListener('click', ()=>{
+  const mover = currentMover();
+  if(!mover) return;
+  log(`${mover} has no legal action and passes.`);
+  finishAction(mover);
+});
+
+document.getElementById('reset-btn').addEventListener('click', ()=>{
+  resetState();
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
