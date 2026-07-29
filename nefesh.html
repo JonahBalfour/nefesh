@@ -225,6 +225,14 @@
 
     <div class="panel-box">
       <div class="panel-title">LOG</div>
+      <div id="last-game-note" style="display:none; font-size:11px; color:var(--gold); margin-bottom:8px;">
+        A previous game's log was auto-saved.
+        <button id="copy-lastgame-btn" style="padding:3px 8px; font-size:11px; margin-left:6px;">Copy it</button>
+      </div>
+      <div class="row" style="margin-bottom:6px; justify-content:flex-end;">
+        <button id="copy-log-btn" style="padding:4px 10px; font-size:11px;">Copy current log</button>
+      </div>
+      <textarea id="log-copy-area" readonly style="display:none; width:100%; height:90px; margin-bottom:8px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px; font-size:11px; padding:6px;"></textarea>
       <div id="log"></div>
     </div>
 
@@ -701,6 +709,13 @@ function render(){
     document.getElementById('win-overlay').classList.add('show');
     document.getElementById('win-title').textContent = state.isDraw ? 'Draw' : `${state.winner==='white'?'White':'Black'} wins`;
     document.getElementById('win-reason').textContent = state.winReason;
+    try{
+      localStorage.setItem('nefesh-last-game-log', JSON.stringify({
+        log: state.log.slice().reverse(),
+        winner: state.winner,
+        winReason: state.winReason
+      }));
+    } catch(e){ /* localStorage unavailable (e.g. private browsing) - not critical, skip silently */ }
   } else {
     document.getElementById('win-overlay').classList.remove('show');
   }
@@ -925,6 +940,47 @@ document.querySelectorAll('input[name="opponent-mode"]').forEach(radio=>{
     render();
   });
 });
+
+// ---------- copy-log helpers ----------
+// Clipboard permissions are unreliable on a file:// page across browsers, so
+// this doesn't just try to copy silently and hope - it always reveals the
+// text, selected, in a visible box too. A silent clipboard copy is attempted
+// as a bonus, but the selected textarea is the guaranteed fallback: if the
+// silent copy didn't fire, a manual Cmd/Ctrl+C on the already-selected text
+// still works.
+function revealForCopy(text, btn){
+  const box = document.getElementById('log-copy-area');
+  box.style.display = 'block';
+  box.value = text;
+  box.focus();
+  box.select();
+  try {
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(()=>{});
+    document.execCommand('copy');
+  } catch(e){ /* best-effort - the visible selected box below is the real fallback */ }
+  const original = btn.textContent;
+  btn.textContent = 'Ready below ↓';
+  setTimeout(()=>{ btn.textContent = original; }, 2500);
+}
+
+document.getElementById('copy-log-btn').addEventListener('click', (e)=>{
+  const text = state.log.slice().reverse().join('\n');
+  revealForCopy(text || '(no moves logged yet)', e.target);
+});
+
+(function initLastGameNote(){
+  let saved;
+  try{ saved = localStorage.getItem('nefesh-last-game-log'); } catch(e){ saved = null; }
+  if(!saved) return;
+  document.getElementById('last-game-note').style.display = 'block';
+  document.getElementById('copy-lastgame-btn').addEventListener('click', (e)=>{
+    try{
+      const data = JSON.parse(saved);
+      const header = `${data.winner==='draw' ? 'Draw' : (data.winner==='white'?'White':'Black')+' won'} — ${data.winReason}\n\n`;
+      revealForCopy(header + data.log.join('\n'), e.target);
+    } catch(err){ /* corrupted saved data - nothing to do */ }
+  });
+})();
 
 render();
 </script>
