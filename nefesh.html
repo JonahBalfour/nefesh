@@ -180,6 +180,16 @@
   <div class="control-panel">
 
     <div class="panel-box">
+      <div class="panel-title">OPPONENT</div>
+      <div style="display:flex; flex-direction:column; gap:6px; font-size:13px;">
+        <label><input type="radio" name="opponent-mode" value="pvp" checked> Two players (pass &amp; play)</label>
+        <label><input type="radio" name="opponent-mode" value="bot-black"> Play as White — Computer plays Black</label>
+        <label><input type="radio" name="opponent-mode" value="bot-white"> Play as Black — Computer plays White</label>
+      </div>
+      <div id="bot-thinking" style="font-size:12px; color:var(--gold); margin-top:8px; display:none;">Computer is thinking…</div>
+    </div>
+
+    <div class="panel-box">
       <div class="panel-title">ROUND</div>
       <div class="row">
         <div>Round <b id="round-num">1</b></div>
@@ -346,6 +356,8 @@ function freshPieces(){
   return obj;
 }
 let state;
+let botColor = null; // null = two humans; 'white' or 'black' = that color is computer-controlled
+let botBusy = false;
 function resetState(){
   state = {
     round:1,
@@ -569,6 +581,95 @@ function finishAction(color){
   }
 }
 
+// ---------- computer opponent ----------
+// Reuses the same scoring approach as nefesh-sim.js: list every legal action,
+// score each with hand-tuned weights, pick the best (with a little random
+// jitter so ties aren't always broken the same way). It reacts well to the
+// current board but doesn't look ahead multiple turns.
+const PIECE_VALUE = { soul: 100000, body: 80, mind: 20, will: 25, elf: 30, man: 22, dwarf: 16, creature: 10 };
+
+function scoreOption(color, opt){
+  let score = Math.random()*3;
+
+  if(opt.type==='place'){
+    const startMaster = START_MASTER[color];
+    const occ = occupantsAtMaster(startMaster).filter(o=>o.color===color);
+    const hitsOwnSoul = occ.some(o=>o.pieceId==='soul');
+    const hitsOwnOther = occ.some(o=>o.pieceId!=='soul');
+    if(hitsOwnSoul) score -= 100000; // never place on top of your own unmoved Soul
+    else if(hitsOwnOther) score -= 15; // wastes a piece, mildly bad
+    else score += 6; // otherwise, getting pieces onto the board is good
+    return score;
+  }
+
+  const move = opt.move;
+  const pieceId = opt.pieceId;
+  const p = state.pieces[color][pieceId];
+
+  if(move.kind==='soul-win') return score + 1000000; // immediate win
+  if(move.kind==='soul-overshoot-capture') return score - 200000; // self-destructs own Soul
+  if(move.kind==='self-lap-capture') return score - 40; // loses this piece for nothing
+
+  // kind === 'normal'
+  score += Math.abs(move.delta) * 0.5; // mild preference for making real progress
+  move.occ.forEach(o=>{
+    if(o.color===color){
+      score -= (o.pieceId==='soul') ? 200000 : 15;
+    } else {
+      score += (o.pieceId==='soul') ? 100000 : (o.pieceId==='body' ? 70 : (PIECE_VALUE[o.pieceId]||20));
+    }
+  });
+  if(pieceId==='soul' && p.progress===0) score += 500; // urgency: get the Soul moving
+  return score;
+}
+
+function pickBotAction(color){
+  const options = [];
+  PIECE_DEFS.forEach(d=>{
+    const p = state.pieces[color][d.id];
+    if(p.status==='bench') options.push({type:'place', pieceId:d.id});
+  });
+  PIECE_DEFS.forEach(d=>{
+    const p = state.pieces[color][d.id];
+    if(p.status==='onboard'){
+      getLegalMoves(color, d.id).forEach(m=>options.push({type:'move', pieceId:d.id, move:m}));
+    }
+  });
+  if(options.length===0) return null;
+  const scored = options.map(o=>({o, sc: scoreOption(color, o)}));
+  scored.sort((a,b)=>b.sc-a.sc);
+  return scored[0].o;
+}
+
+function maybeBotTurn(){
+  if(!botColor || state.winner) return;
+  const mover = currentMover();
+  if(mover !== botColor || botBusy) return;
+  botBusy = true;
+  document.getElementById('bot-thinking').style.display = 'block';
+  setTimeout(()=>{
+    botBusy = false;
+    document.getElementById('bot-thinking').style.display = 'none';
+    if(state.winner || currentMover()!==botColor) return;
+    if(!state.dice){
+      const d1 = 1+Math.floor(Math.random()*6);
+      const d2 = 1+Math.floor(Math.random()*6);
+      state.dice = {d1,d2};
+      log(`Round ${state.round}: dice rolled — ${d1} and ${d2}.`);
+      render();
+      return;
+    }
+    const choice = pickBotAction(botColor);
+    if(!choice){
+      log(`${botColor==='white'?'White':'Black'} has no legal action and passes.`);
+      finishAction(botColor);
+      return;
+    }
+    if(choice.type==='place') placePiece(botColor, choice.pieceId);
+    else performMove(botColor, choice.pieceId, choice.move);
+  }, 600);
+}
+
 // ---------- rendering ----------
 const svg = document.getElementById('board-svg');
 function el(tag,attrs){
@@ -594,6 +695,7 @@ function render(){
   } else {
     document.getElementById('win-overlay').classList.remove('show');
   }
+  maybeBotTurn();
 }
 
 function splitDoubleArrow(cx,cy,blackAngle,halfLen){
@@ -760,7 +862,7 @@ function renderControls(){
     pill.textContent = 'Game over';
     pill.className='pill black';
   } else if(mover){
-    pill.textContent = mover==='white'?'White':'Black';
+    pill.textContent = (mover==='white'?'White':'Black') + (mover===botColor ? ' (Computer)' : '');
     pill.className = 'pill '+mover;
   }
   document.getElementById('die1').textContent = state.dice? state.dice.d1 : '–';
@@ -772,7 +874,7 @@ function renderControls(){
     : '';
 
   const rollBtn = document.getElementById('roll-btn');
-  rollBtn.disabled = !!state.dice || !!state.winner;
+  rollBtn.disabled = !!state.dice || !!state.winner || mover===botColor;
 
 
   const passBtn = document.getElementById('pass-btn');
@@ -804,6 +906,15 @@ document.getElementById('pass-btn').addEventListener('click', ()=>{
 document.getElementById('reset-btn').addEventListener('click', ()=>{
   resetState();
   render();
+});
+
+document.querySelectorAll('input[name="opponent-mode"]').forEach(radio=>{
+  radio.addEventListener('change', (e)=>{
+    const v = e.target.value;
+    botColor = v==='bot-black' ? 'black' : (v==='bot-white' ? 'white' : null);
+    resetState();
+    render();
+  });
 });
 
 render();
