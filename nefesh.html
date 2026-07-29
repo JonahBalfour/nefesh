@@ -234,7 +234,8 @@
         <p>A few judgment calls I made to get this playable — flag anything that's wrong and I'll adjust:</p>
         <ul>
           <li>The 4 central-ring spaces are modeled as a single set passed through once per lap (not twice), sitting between the two loops in the sequence. If Nefesh's real geometry passes through center twice per figure-8 lap, this needs revising.</li>
-          <li>Bonus is applied as "0 up to the piece's bonus," added to whichever dice value (sum / difference / single die) you pick.</li>
+          <li>Movement uses only the sum of both dice — d1 and d2 alone, and their difference, aren't usable as a move length. A piece's bonus is a flat add, always fully applied on top of that sum (not a range you choose from).</li>
+          <li>The 4 Race pieces (Creature, Dwarf, Man, Elf) start the game already on the board instead of on the bench — no placement needed for these. Only the 4 Person pieces (Mind, Will, Body, Soul) still need to be placed.</li>
           <li>Placement can happen on your turn even after the dice are rolled (rules say placement must happen before the roll — simplified here so the turn structure stays simple; you can self-enforce the stricter timing at the table).</li>
           <li>The Soul's Infinite entry requires landing on an exact target space; overshooting keeps it circling in the endgame zone until an exact roll lands it there.</li>
           <li>A non-Soul piece that would complete a full circuit is captured automatically instead of completing the move.</li>
@@ -352,7 +353,16 @@ function pathToMaster(color, progress){
 // ---------- state ----------
 function freshPieces(){
   const obj={};
-  PIECE_DEFS.forEach(d=>{ obj[d.id] = {status:'bench', progress:0, completedCircuit:false}; });
+  const raceOrder = PIECE_DEFS.filter(d=>d.category==='race');
+  PIECE_DEFS.forEach(d=>{
+    if(d.category==='race'){
+      // Race pieces start already on the board, occupying the first 4 spaces
+      // of their own path - no placement needed for these.
+      obj[d.id] = {status:'onboard', progress:raceOrder.indexOf(d), completedCircuit:false};
+    } else {
+      obj[d.id] = {status:'bench', progress:0, completedCircuit:false};
+    }
+  });
   return obj;
 }
 let state;
@@ -408,8 +418,7 @@ function occupantsAtMaster(masterIdx){
 function diceBaseOptions(){
   if(!state.dice) return [];
   const {d1,d2} = state.dice;
-  const set = new Set([d1,d2,d1+d2,Math.abs(d1-d2)]);
-  return [...set].filter(v=>v>0);
+  return [d1+d2]; // only the sum of both dice is usable as a move length
 }
 
 function getLegalMoves(color, pieceId){
@@ -419,7 +428,7 @@ function getLegalMoves(color, pieceId){
   if(p.status!=='onboard' || !state.dice) return [];
   const bases = diceBaseOptions();
   const deltaMagnitudes = new Set();
-  bases.forEach(b=>{ for(let bonus=0; bonus<=def.bonus; bonus++){ deltaMagnitudes.add(b+bonus); } });
+  bases.forEach(b=>{ deltaMagnitudes.add(b+def.bonus); }); // bonus is a flat add, always fully applied
   const deltas = new Set();
   deltaMagnitudes.forEach(v=>{
     deltas.add(v);

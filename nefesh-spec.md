@@ -188,7 +188,7 @@ to be, same size, same containment, just doubled into a crossing pair.
 
 ---
 
-## 3. Pieces and rules (for completeness — this part hasn't been in question)
+## 3. Pieces and rules
 
 **The pieces — 8 per player, one of each:**
 | Piece | Category | Bonus | Movement |
@@ -202,15 +202,32 @@ to be, same size, same containment, just doubled into a crossing pair.
 | Body | Person | +3 | forward/backward (not behind start) |
 | Soul | Person | +0 (the "+∞" on the board is thematic only) | forward/backward, special endgame rules near the Infinite |
 
-A piece's bonus is **not** a flat add — it can add anywhere from 0 up to its
-bonus value on top of whichever dice value (sum, difference, or a single die)
-is chosen for that move.
+**Movement uses only the sum of both dice** — d1 and d2 individually, and
+their difference, are not usable on their own as a move length. A piece's
+bonus is a **flat add**, always fully applied on top of that sum (not a range
+you choose from). Revised from an earlier version where all four values
+(d1, d2, sum, difference) were usable and the bonus was a 0-to-max range —
+playtesting (via simulation) showed that version gave players so many options
+each turn that dice rolls barely mattered and individual decisions felt low-
+stakes; this tighter version keeps captures and positioning more consequential.
+
+**Starting positions:**
+- The 4 Race pieces (Creature, Dwarf, Man, Elf) start the game already on the
+  board, occupying the first 4 spaces of their own path (in that bonus order)
+  instead of on the bench — no placement needed for these.
+- The 4 Person pieces (Mind, Will, Body, Soul) still start on the bench and
+  must be placed on the player's own starting dot before they can move.
+- Because a piece's starting square (progress 0) sits on the same space as
+  the player's own starting dot, placing a Person piece before moving your
+  Creature away from that dot will self-capture your own Creature — a real
+  tactical choice (move it first, or accept the trade for tempo), not a bug.
 
 **Turn structure:**
 - Each round, players alternate who goes first (White first in round 1, Black
   first in round 2, etc.).
 - Dice are rolled once per round, by whichever player moves second that round.
-- Each player must place a piece or move a piece every round.
+- Each player must place a Person piece still on the bench, or move any
+  onboard piece, every round.
 - Placement happens on a player's own starting dot (16 for Black, 18 for White).
 
 **Captures:**
