@@ -1035,11 +1035,10 @@ function diagonalGuideline(cx,cy,len){
   return g;
 }
 
-// A short curved arrow following a loop's own ring, used to show a color's
-// direction of travel. angle increases with each color's forward progress
-// on both loops (see the wedge-building loops above), so direction is always
-// -1 here (both Black's and White's earliest moves count DOWN in local
-// index) - see loopRefForColor below for how the loop itself is picked.
+// A short curved arrow drawn inside a loop's hollow center (near its inner
+// edge, not on the checkered ring itself), used to show a color's rotational
+// direction of travel around that loop. direction: +1 = increasing angle
+// (clockwise in this screen's y-down coordinates), -1 = counterclockwise.
 function drawLoopArrow(cx,cy,radius,centerAngle,halfSpan,direction,fill,stroke){
   const a0 = centerAngle-halfSpan, a1 = centerAngle+halfSpan;
   const tailAngle = direction>0 ? a0 : a1;
@@ -1066,14 +1065,20 @@ function drawLoopArrow(cx,cy,radius,centerAngle,halfSpan,direction,fill,stroke){
   return g;
 }
 
-// Which physical loop currently displays a color's earliest moves, and the
-// angular origin to measure along it - accounting for the board flip, since
-// flipping swaps which screen-side shows the left-loop vs right-loop content
-// (same swap that made the seating and X-icon fixes necessary).
-function loopRefForColor(color){
-  const naturallyOnLeft = color==='black'; // Black's own start (16) opens onto the left loop when unflipped
-  const useLeftGeometry = isBoardFlipped() ? !naturallyOnLeft : naturallyOnLeft;
-  return useLeftGeometry ? {cx:Lx, cy:Ly, start:leftStart} : {cx:Rx, cy:Ry, start:rightStart};
+// Which loop's true identity (originally-left, master idx 0-15, vs
+// originally-right, master idx 20-35) currently renders at a given SCREEN
+// position - accounting for the flip, since flipping swaps which loop's
+// content shows on which side (same swap used everywhere else on the board).
+function loopIdentityAtScreenSlot(screenSide){
+  if(!isBoardFlipped()) return screenSide;
+  return screenSide==='left' ? 'right' : 'left';
+}
+// Black moves counterclockwise on the originally-left loop and clockwise on
+// the originally-right loop (see PATH_ORDER); White is always the opposite
+// of Black on whichever loop this is. direction here matches drawLoopArrow's
+// convention: +1 = increasing angle = clockwise, -1 = counterclockwise.
+function blackDirectionOnLoop(loopIdentity){
+  return loopIdentity==='left' ? -1 : 1;
 }
 
 function renderBoard(){
@@ -1150,23 +1155,24 @@ function renderBoard(){
   infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+INF_R+16, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill:'var(--gold-bright)'})).textContent='INF';
   svg.appendChild(infG);
 
-  // Direction-of-travel arrows: each color gets two, on whichever loop
-  // currently shows its earliest moves (see loopRefForColor) - one right by
-  // the hub, one at the far side of the loop as a reminder partway around.
-  // Both colors' local index counts DOWN on their first loop (see PATH_ORDER),
-  // so direction is -1 for both; only which loop they're drawn on differs,
-  // and that already accounts for the flip.
-  const arrowRadius = (LOOP_R_IN+LOOP_R_OUT)/2;
-  const arrowHalfSpan = STEP*0.9;
+  // Direction-of-travel arrows: each loop gets one black arrow and one white
+  // arrow, drawn INSIDE the loop's hollow center (next to the checkered ring,
+  // not on top of it) - black near the top, white near the bottom, showing
+  // each color's real rotational direction through that specific loop. Every
+  // loop hosts both colors (just at different points in each color's lap,
+  // moving opposite ways), so both are shown on both loops.
+  const arrowRadius = LOOP_R_IN*0.8;
+  const arrowHalfSpan = 0.35;
+  const TOP_ANGLE = 270*Math.PI/180, BOTTOM_ANGLE = 90*Math.PI/180;
   [
-    {color:'black', fill:'#141110', stroke:'#8a7757'},
-    {color:'white', fill:'#f4ecd8', stroke:'#5c422c'},
-  ].forEach(({color, fill, stroke})=>{
-    const ref = loopRefForColor(color);
-    const nearHubAngle = ref.start + 14*STEP;
-    const farSideAngle = ref.start + VISIBLE_SPAN/2;
-    svg.appendChild(drawLoopArrow(ref.cx, ref.cy, arrowRadius, nearHubAngle, arrowHalfSpan, -1, fill, stroke));
-    svg.appendChild(drawLoopArrow(ref.cx, ref.cy, arrowRadius, farSideAngle, arrowHalfSpan, -1, fill, stroke));
+    {side:'left', cx:Lx, cy:Ly},
+    {side:'right', cx:Rx, cy:Ry},
+  ].forEach(({side, cx, cy})=>{
+    const identity = loopIdentityAtScreenSlot(side);
+    const blackDir = blackDirectionOnLoop(identity);
+    const whiteDir = -blackDir;
+    svg.appendChild(drawLoopArrow(cx, cy, arrowRadius, TOP_ANGLE, arrowHalfSpan, blackDir, '#141110', '#8a7757'));
+    svg.appendChild(drawLoopArrow(cx, cy, arrowRadius, BOTTOM_ANGLE, arrowHalfSpan, whiteDir, '#f4ecd8', '#5c422c'));
   });
 
   // pieces
