@@ -960,22 +960,63 @@ function render(){
   maybeBotTurn();
 }
 
-function splitDoubleArrow(cx,cy,blackAngle,halfLen){
-  const d={x:Math.cos(blackAngle),y:Math.sin(blackAngle)};
-  const p={x:-d.y,y:d.x};
-  const shaftHW=halfLen*0.16, headHW=halfLen*0.40, headLenFrac=0.34;
-  function pt(t,hw){
-    const base={x:cx+d.x*t*halfLen, y:cy+d.y*t*halfLen};
-    return {c:base, L:{x:base.x+p.x*hw,y:base.y+p.y*hw}, R:{x:base.x-p.x*hw,y:base.y-p.y*hw}};
-  }
-  const tipB=pt(1,0).c, baseB=pt(1-headLenFrac,shaftHW), barbB=pt(1-headLenFrac,headHW);
-  const tipW=pt(-1,0).c, baseW=pt(-(1-headLenFrac),shaftHW), barbW=pt(-(1-headLenFrac),headHW);
-  const cSplit=pt(0,shaftHW);
-  const g=el('g',{});
-  g.appendChild(el('polygon',{points:`${cSplit.L.x},${cSplit.L.y} ${baseB.L.x},${baseB.L.y} ${barbB.L.x},${barbB.L.y} ${tipB.x},${tipB.y} ${barbB.R.x},${barbB.R.y} ${baseB.R.x},${baseB.R.y} ${cSplit.R.x},${cSplit.R.y}`, fill:'#141110'}));
-  g.appendChild(el('polygon',{points:`${cSplit.L.x},${cSplit.L.y} ${baseW.L.x},${baseW.L.y} ${barbW.L.x},${barbW.L.y} ${tipW.x},${tipW.y} ${barbW.R.x},${barbW.R.y} ${baseW.R.x},${baseW.R.y} ${cSplit.R.x},${cSplit.R.y}`, fill:'#e9dcc0'}));
-  g.appendChild(el('polygon',{points:`${tipB.x},${tipB.y} ${barbB.L.x},${barbB.L.y} ${baseB.L.x},${baseB.L.y} ${cSplit.L.x},${cSplit.L.y} ${baseW.L.x},${baseW.L.y} ${barbW.L.x},${barbW.L.y} ${tipW.x},${tipW.y} ${barbW.R.x},${barbW.R.y} ${baseW.R.x},${baseW.R.y} ${cSplit.R.x},${cSplit.R.y} ${baseB.R.x},${baseB.R.y} ${barbB.R.x},${barbB.R.y}`, fill:'none', stroke:'#3a2a1d','stroke-width':1.3}));
+// Subtle stand-in for the old bold X icon: just enough to hint that the hub
+// is a true crossing (16<->18, 17<->19), not a simple ring - two thin dashed
+// lines along the same diagonal axes. Unlike the old icon, this needs no
+// flip-handling at all: a 180-degree rotation maps each diagonal axis onto
+// itself, so the lines are correct in both orientations without change.
+function diagonalGuideline(cx,cy,len){
+  const g = el('g',{});
+  [225,315].forEach(deg=>{
+    const rad = deg*Math.PI/180;
+    g.appendChild(el('line',{
+      x1:cx-len*Math.cos(rad), y1:cy-len*Math.sin(rad),
+      x2:cx+len*Math.cos(rad), y2:cy+len*Math.sin(rad),
+      stroke:'rgba(224,178,90,0.4)', 'stroke-width':1.4, 'stroke-dasharray':'3,3'
+    }));
+  });
   return g;
+}
+
+// A short curved arrow following a loop's own ring, used to show a color's
+// direction of travel. angle increases with each color's forward progress
+// on both loops (see the wedge-building loops above), so direction is always
+// -1 here (both Black's and White's earliest moves count DOWN in local
+// index) - see loopRefForColor below for how the loop itself is picked.
+function drawLoopArrow(cx,cy,radius,centerAngle,halfSpan,direction,fill,stroke){
+  const a0 = centerAngle-halfSpan, a1 = centerAngle+halfSpan;
+  const tailAngle = direction>0 ? a0 : a1;
+  const headAngle = direction>0 ? a1 : a0;
+  const pullBack = Math.min(halfSpan*0.5, 0.14);
+  const shaftEndAngle = headAngle - direction*pullBack;
+  const pt = a => ({x:cx+radius*Math.cos(a), y:cy+radius*Math.sin(a)});
+  const tail = pt(tailAngle), shaftEnd = pt(shaftEndAngle), tip = pt(headAngle);
+  const sweepFlag = direction>0 ? 1 : 0;
+  const largeArcFlag = Math.abs(a1-a0) > Math.PI ? 1 : 0;
+  const g = el('g',{});
+  g.appendChild(el('path',{
+    d:`M ${tail.x} ${tail.y} A ${radius} ${radius} 0 ${largeArcFlag} ${sweepFlag} ${shaftEnd.x} ${shaftEnd.y}`,
+    fill:'none', stroke:fill, 'stroke-width':6, 'stroke-linecap':'round'
+  }));
+  const tanX = -Math.sin(headAngle)*direction, tanY = Math.cos(headAngle)*direction;
+  const perpX = -tanY, perpY = tanX;
+  const headLen=13, headWidth=10;
+  const baseX = tip.x-tanX*headLen, baseY = tip.y-tanY*headLen;
+  g.appendChild(el('polygon',{
+    points:`${tip.x},${tip.y} ${baseX+perpX*headWidth/2},${baseY+perpY*headWidth/2} ${baseX-perpX*headWidth/2},${baseY-perpY*headWidth/2}`,
+    fill, stroke, 'stroke-width':1, 'stroke-linejoin':'round'
+  }));
+  return g;
+}
+
+// Which physical loop currently displays a color's earliest moves, and the
+// angular origin to measure along it - accounting for the board flip, since
+// flipping swaps which screen-side shows the left-loop vs right-loop content
+// (same swap that made the seating and X-icon fixes necessary).
+function loopRefForColor(color){
+  const naturallyOnLeft = color==='black'; // Black's own start (16) opens onto the left loop when unflipped
+  const useLeftGeometry = isBoardFlipped() ? !naturallyOnLeft : naturallyOnLeft;
+  return useLeftGeometry ? {cx:Lx, cy:Ly, start:leftStart} : {cx:Rx, cy:Ry, start:rightStart};
 }
 
 function renderBoard(){
@@ -1031,7 +1072,7 @@ function renderBoard(){
     svg.appendChild(g);
   });
 
-  // infinite: one plain circle, with the X icon (two bicolor crossing arrows) inside it
+  // infinite: one plain circle, with a subtle diagonal guideline hinting at the crossing
   const infG = el('g',{});
   infG.appendChild(el('circle',{cx:INFINITE_PT.x, cy:INFINITE_PT.y, r:INF_R, fill:'#6b4a35', stroke:'#5c422c','stroke-width':2}));
   if(winMove){
@@ -1047,17 +1088,28 @@ function renderBoard(){
     infG.addEventListener('click',handler);
     infG.appendChild(winRing);
   }
-  const arrowHalfLen = INF_R*0.78;
-  // Each arrow's black tip points toward whichever quadrant is currently
-  // light. Flipping the board swaps which quadrants are light/dark (the
-  // same top<->bottom swap that made the seating fix necessary earlier), so
-  // the black tip has to swap to the opposite end too, or it'd point at a
-  // now-dark quadrant instead.
-  const arrowFlip = isBoardFlipped() ? Math.PI : 0;
-  infG.appendChild(splitDoubleArrow(INFINITE_PT.x, INFINITE_PT.y, 225*Math.PI/180 + arrowFlip, arrowHalfLen)); // 16 <-> 18
-  infG.appendChild(splitDoubleArrow(INFINITE_PT.x, INFINITE_PT.y, 315*Math.PI/180 + arrowFlip, arrowHalfLen)); // 17 <-> 19
+  infG.appendChild(diagonalGuideline(INFINITE_PT.x, INFINITE_PT.y, INF_R*0.78));
   infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+INF_R+16, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill:'var(--gold-bright)'})).textContent='INF';
   svg.appendChild(infG);
+
+  // Direction-of-travel arrows: each color gets two, on whichever loop
+  // currently shows its earliest moves (see loopRefForColor) - one right by
+  // the hub, one at the far side of the loop as a reminder partway around.
+  // Both colors' local index counts DOWN on their first loop (see PATH_ORDER),
+  // so direction is -1 for both; only which loop they're drawn on differs,
+  // and that already accounts for the flip.
+  const arrowRadius = (LOOP_R_IN+LOOP_R_OUT)/2;
+  const arrowHalfSpan = STEP*0.9;
+  [
+    {color:'black', fill:'#141110', stroke:'#8a7757'},
+    {color:'white', fill:'#f4ecd8', stroke:'#5c422c'},
+  ].forEach(({color, fill, stroke})=>{
+    const ref = loopRefForColor(color);
+    const nearHubAngle = ref.start + 14*STEP;
+    const farSideAngle = ref.start + VISIBLE_SPAN/2;
+    svg.appendChild(drawLoopArrow(ref.cx, ref.cy, arrowRadius, nearHubAngle, arrowHalfSpan, -1, fill, stroke));
+    svg.appendChild(drawLoopArrow(ref.cx, ref.cy, arrowRadius, farSideAngle, arrowHalfSpan, -1, fill, stroke));
+  });
 
   // pieces
   ['white','black'].forEach(color=>{
