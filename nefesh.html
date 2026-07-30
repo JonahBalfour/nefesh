@@ -380,6 +380,28 @@ for(let i=0;i<LOOP_LEN;i++){
 }
 const INFINITE_PT = {x:Hx, y:Hy};
 
+// Board orientation: the whole figure-8 has exact 180-degree rotational
+// symmetry around the hub center, so "turn the board around to face the
+// other player" is just: draw each space's own color/label/pieces at the
+// SCREEN POSITION of its rotational counterpart, rather than its own natural
+// position. Left-loop space i's counterpart is right-loop space 20+i (they're
+// the same angular slot, just on opposite loops), and the hub quadrants swap
+// diagonally (16<->18, 17<->19). This is a pure repositioning - each space
+// keeps its own true identity, color, and game logic; only where it's drawn
+// changes.
+const FLIP_MAP = (()=>{
+  const map = {};
+  for(let i=0;i<16;i++){ map[i]=20+i; map[20+i]=i; }
+  map[16]=18; map[18]=16; map[17]=19; map[19]=17;
+  return map;
+})();
+function isBoardFlipped(){
+  return botColor==='white'; // botColor is the COMPUTER's color - so the human is playing Black here, turn the board to face them
+}
+function visualMaster(idx){
+  return isBoardFlipped() ? MASTER[FLIP_MAP[idx]] : MASTER[idx];
+}
+
 
 
 // The confirmed path: Black's one full circuit, in order. The hub isn't a simple ring —
@@ -952,25 +974,26 @@ function renderBoard(){
   // sits underneath it at the seam, instead of the hub being the one cut back.
   const renderOrder = [...MASTER.filter(s=>s.zone!=='hub'), ...MASTER.filter(s=>s.zone==='hub')];
   renderOrder.forEach(sp=>{
+    const vis = visualMaster(sp.idx); // where this space actually draws - itself, unless the board is turned to face Black
     const isHub = sp.zone==='hub';
     // outside the hub, spaces always alternate; inside the hub, top pair is light and bottom pair is dark (not alternating)
     const fill = isHub ? (sp.half==='light' ? '#e9dcc0' : '#181410') : (sp.shade==='dark' ? '#181410' : '#e9dcc0');
     const g = el('g',{});
-    const wedgeAttrs = {d:sp.path, fill, stroke:'#5c422c','stroke-width':1.6};
+    const wedgeAttrs = {d:vis.path, fill, stroke:'#5c422c','stroke-width':1.6};
     const wedge = el('path',wedgeAttrs);
     g.appendChild(wedge);
     if(isHub && sp.isStart){
       const dotColor = sp.isStart==='white' ? '#f4ecd8' : '#141110';
-      g.appendChild(el('circle',{cx:sp.x, cy:sp.y, r:7, fill:dotColor, stroke:'#8a7757','stroke-width':1.2}));
+      g.appendChild(el('circle',{cx:vis.x, cy:vis.y, r:7, fill:dotColor, stroke:'#8a7757','stroke-width':1.2}));
     }
     // number label (matches this space's internal ID, for giving feedback)
     const labelDark = fill==='#e9dcc0';
-    const labelY = (isHub && sp.isStart) ? sp.y+15 : sp.y+4;
-    const numLabel = el('text',{x:sp.x, y:labelY, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill: labelDark?'#181410':'#e9dcc0', 'pointer-events':'none'});
+    const labelY = (isHub && sp.isStart) ? vis.y+15 : vis.y+4;
+    const numLabel = el('text',{x:vis.x, y:labelY, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill: labelDark?'#181410':'#e9dcc0', 'pointer-events':'none'});
     numLabel.textContent = sp.idx;
     g.appendChild(numLabel);
     if(legalTargets[sp.idx]){
-      const ringAttrs = {d:sp.path, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3};
+      const ringAttrs = {d:vis.path, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3};
       const ring = el('path',ringAttrs);
       ring.classList.add('legal-move-space');
       const handler = ()=>{
@@ -1014,7 +1037,8 @@ function renderBoard(){
       const p = state.pieces[color][def.id];
       if(p.status!=='onboard') return;
       const m = pathToMaster(color, p.progress);
-      const pt = {x: MASTER[ MASTER.findIndex(s=>s.idx===m) ].x, y: MASTER[ MASTER.findIndex(s=>s.idx===m) ].y };
+      const vis = visualMaster(m);
+      const pt = {x: vis.x, y: vis.y};
       const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
       const g = el('g',{style:'cursor:pointer'});
       const fill = color==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
