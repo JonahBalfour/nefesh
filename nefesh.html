@@ -416,9 +416,9 @@ function visualMaster(idx){
 // This just gives the player a more readable name: which zone a space is in
 // (Left loop / Hub / Right loop) plus its position within that zone.
 function displayLabel(idx){
-  if(idx>=0 && idx<=15) return 'L'+(idx+1);
+  if(idx>=0 && idx<=15) return 'L'+(16-idx);
   if(idx>=16 && idx<=19) return 'H'+(idx-15);
-  if(idx>=20 && idx<=35) return 'R'+(idx-19);
+  if(idx>=20 && idx<=35) return 'R'+(36-idx);
   return String(idx);
 }
 
