@@ -28,9 +28,18 @@ function pathToMaster(color, progress){
   return PATH_ORDER[((TRACK_LEN-1-p)%TRACK_LEN+TRACK_LEN)%TRACK_LEN];
 }
 
+let PREPLACE_RACE_PIECES = false; // direction-1 softer variant: Race pieces start onboard, Person pieces still enter via the bench
+
 function freshPieces(){
   const obj={};
-  PIECE_DEFS.forEach(d=>{ obj[d.id] = {status:'bench', progress:0, completedCircuit:false, inEndgame:false}; });
+  const raceOrder = PIECE_DEFS.filter(d=>d.category==='race');
+  PIECE_DEFS.forEach(d=>{
+    if(PREPLACE_RACE_PIECES && d.category==='race'){
+      obj[d.id] = {status:'onboard', progress:raceOrder.indexOf(d), completedCircuit:false};
+    } else {
+      obj[d.id] = {status:'bench', progress:0, completedCircuit:false};
+    }
+  });
   return obj;
 }
 let state;
@@ -46,6 +55,7 @@ function resetState(){
     winReason:'',
     isDraw:false,
     log:[],
+    firstContactRound:null,
     pieces:{ white:freshPieces(), black:freshPieces() }
   };
 }
@@ -67,7 +77,7 @@ function occupantsAtMaster(masterIdx){
     for(const d of PIECE_DEFS){
       const p = state.pieces[color][d.id];
       if(p.status==='onboard'){
-        const m = p.inEndgame ? null : pathToMaster(color,p.progress);
+        const m = pathToMaster(color,p.progress);
         if(m===masterIdx) res.push({color, pieceId:d.id});
       }
     }
@@ -75,11 +85,26 @@ function occupantsAtMaster(masterIdx){
   return res;
 }
 
+let DICE_MENU_MODE = 'full'; // 'full' (d1,d2,sum,diff - current rules); 'no-diff' (drop the difference); 'sum-only' (just the sum); 'dice-only' (just d1 or d2, no sum, no difference)
+
 function diceBaseOptions(){
   if(!state.dice) return [];
   const {d1,d2} = state.dice;
-  const set = new Set([d1,d2,d1+d2,Math.abs(d1-d2)]);
+  let vals;
+  if(DICE_MENU_MODE==='sum-only') vals = [d1+d2];
+  else if(DICE_MENU_MODE==='no-diff') vals = [d1,d2,d1+d2];
+  else if(DICE_MENU_MODE==='dice-only') vals = [d1,d2];
+  else vals = [d1,d2,d1+d2,Math.abs(d1-d2)];
+  const set = new Set(vals);
   return [...set].filter(v=>v>0);
+}
+
+let SOUL_BONUS_AFTER_OWN_BODY_CAPTURED = 0; // 0 = baseline (Soul keeps its normal +0); variant sets this higher
+let BONUS_MODE = 'flex'; // 'flex' = current rules (choose anywhere from 0 up to the bonus); 'fixed' = always add the full bonus
+
+function effectiveBonus(color, def){
+  if(def.id==='soul' && state.bodyCaptured[color]) return SOUL_BONUS_AFTER_OWN_BODY_CAPTURED;
+  return def.bonus;
 }
 
 function getLegalMoves(color, pieceId){
@@ -88,8 +113,13 @@ function getLegalMoves(color, pieceId){
   const p = state.pieces[color][pieceId];
   if(p.status!=='onboard' || !state.dice) return [];
   const bases = diceBaseOptions();
+  const bonus = effectiveBonus(color, def);
   const deltaMagnitudes = new Set();
-  bases.forEach(b=>{ for(let bonus=0; bonus<=def.bonus; bonus++){ deltaMagnitudes.add(b+bonus); } });
+  if(BONUS_MODE==='fixed'){
+    bases.forEach(b=>{ deltaMagnitudes.add(b+bonus); }); // bonus always fully applied, no choice of how much
+  } else {
+    bases.forEach(b=>{ for(let bn=0; bn<=bonus; bn++){ deltaMagnitudes.add(b+bn); } });
+  }
   const deltas = new Set();
   deltaMagnitudes.forEach(v=>{
     deltas.add(v);
@@ -116,28 +146,26 @@ function getLegalMoves(color, pieceId){
       return;
     }
 
-    if(!p.completedCircuit){
-      if(delta<0 && newProgress<0) return;
-      if(newProgress>=TRACK_LEN){
-        legal.push({delta, newProgress, kind:'soul-enter-endgame'});
-        return;
-      }
+    // Soul moves like an ordinary Person piece the whole time, with full normal
+    // capture rules everywhere (matches nefesh.html exactly) - the only two
+    // special cases are landing on exactly TRACK_LEN (wins, once own Body is
+    // captured) and, after completing a first circuit, going negative past its
+    // own start (self-destructs instead of being blocked).
+    if(!p.completedCircuit && delta<0 && newProgress<0) return;
+    if(newProgress === TRACK_LEN && state.bodyCaptured[color]){
+      legal.push({delta, newProgress, kind:'soul-win'});
+      return;
+    }
+    if(p.completedCircuit && newProgress < 0){
+      legal.push({delta, newProgress, kind:'soul-overshoot-capture'});
+      return;
+    }
+    {
       const masterIdx = pathToMaster(color, newProgress);
       const occ = occupantsAtMaster(masterIdx);
       const oppSoulThere = occ.some(o=>o.color===oppColor && o.pieceId==='soul');
       if(oppSoulThere && !state.bodyCaptured[oppColor]) return;
       legal.push({delta, newProgress, kind:'normal', masterIdx, occ});
-    } else {
-      if(newProgress === TRACK_LEN){
-        if(!state.bodyCaptured[color]) return;
-        legal.push({delta, newProgress, kind:'soul-win'});
-        return;
-      }
-      if(newProgress <= -TRACK_LEN){
-        legal.push({delta, newProgress, kind:'soul-overshoot-capture'});
-        return;
-      }
-      legal.push({delta, newProgress, kind:'soul-endgame-shuffle'});
     }
   });
 
@@ -172,7 +200,8 @@ function placePiece(color, pieceId){
   p.status='onboard';
   p.progress=0;
   log(`${color} places ${getDef(pieceId).label} on the starting spot.`);
-  finishAction(color);
+  // NOTE: does not call finishAction - the caller decides when this color's
+  // turn is over, since some rule variants chain a move after a placement.
 }
 
 function performMove(color, pieceId, move){
@@ -182,11 +211,6 @@ function performMove(color, pieceId, move){
   if(move.kind==='self-lap-capture'){
     p.status='captured';
     log(`${def.label} (${color}) completes a full circuit and is captured.`);
-  } else if(move.kind==='soul-enter-endgame'){
-    p.progress = move.newProgress;
-    p.completedCircuit = true;
-    p.inEndgame = true;
-    log(`${def.label} (${color}) completes the circuit and passes the Infinite.`);
   } else if(move.kind==='soul-win'){
     p.progress = move.newProgress;
     state.winner = color;
@@ -196,13 +220,17 @@ function performMove(color, pieceId, move){
     const winner = color==='white' ? 'black' : 'white';
     state.winner = winner;
     state.winReason = `${color}'s Soul overshot and was lost - ${winner} wins.`;
-  } else if(move.kind==='soul-endgame-shuffle'){
-    p.progress = move.newProgress;
   } else if(move.kind==='normal'){
     p.progress = move.newProgress;
+    if(pieceId==='soul' && move.newProgress>=TRACK_LEN){
+      p.completedCircuit = true; // permanent, one-time - never unset once achieved
+    }
     move.occ.forEach(o=>{
       state.pieces[o.color][o.pieceId].status='captured';
       if(o.pieceId==='body'){ state.bodyCaptured[o.color]=true; }
+      if(o.color!==color && state.firstContactRound===null){
+        state.firstContactRound = state.round; // first time either side actually captures the other's piece
+      }
       if(o.pieceId==='soul'){
         const winner = o.color==='white' ? 'black' : 'white';
         state.winner = winner;
@@ -210,7 +238,7 @@ function performMove(color, pieceId, move){
       }
     });
   }
-  finishAction(color);
+  // NOTE: does not call finishAction - see placePiece.
 }
 
 function finishAction(color){
@@ -246,18 +274,49 @@ const PIECE_VALUE = { soul: 100000, body: 80, mind: 20, will: 25, elf: 30, man: 
 
 let SACRIFICE_OWN_BODY = false; // toggled by the CLI harness to compare against baseline
 
+// Bot "personalities" - each just re-weights the same scoring terms (capturing,
+// self-capture risk, general progress, rushing the Soul). Catastrophic/winning
+// terms (own-Soul safety, capturing the enemy Soul, soul-win) are NOT scaled by
+// these - those aren't a matter of style, they're the actual win/loss condition.
+let BOT_PROFILE = {white:'balanced', black:'balanced'};
+// raceWeight/personWeight: how much to prefer advancing/placing pieces of that
+// category over the other. bodyHunt: extra multiplier specifically on
+// capturing the opponent's Body (on top of the general `capture` weight).
+// ownBodyGuard: extra multiplier specifically penalizing self-capturing its
+// OWN Body (on top of the general `selfCapture` weight) - what makes Guardian
+// distinct from Defensive (broadly cautious) rather than redundant with it.
+// selfSacrifice: deliberately self-captures its own Body once its Soul is out
+// and moving, to unlock its own Infinite run early (same idea as the old
+// SACRIFICE_OWN_BODY toggle, now per-persona instead of a single global flag).
+const DEFAULT_AXES = {raceWeight:1.0, personWeight:1.0, bodyHunt:1.0, ownBodyGuard:1.0, selfSacrifice:false};
+const SCORE_PROFILES = {
+  balanced:   {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0}, // same as the original greedy bot
+  aggressive: {...DEFAULT_AXES, capture:1.6, selfCapture:0.5, progress:0.8, soulUrgency:0.8}, // chases captures, shrugs off risk
+  defensive:  {...DEFAULT_AXES, capture:0.7, selfCapture:2.2, progress:0.9, soulUrgency:1.0}, // very reluctant to expose any piece
+  racer:      {...DEFAULT_AXES, capture:0.5, selfCapture:1.0, progress:1.6, soulUrgency:2.5}, // undervalues captures, rushes the Soul out
+  vanguard:   {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0, raceWeight:1.8, personWeight:0.4}, // pushes Race pieces hard, delays Person pieces
+  herald:     {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0, raceWeight:0.4, personWeight:1.8}, // rushes Person pieces out, neglects Race pieces
+  assassin:   {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0, bodyHunt:2.5}, // fixates on reaching the opponent's Body specifically
+  guardian:   {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0, ownBodyGuard:3.0}, // otherwise normal, but goes far out of its way to keep its own Body safe
+  zealot:     {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.2, selfSacrifice:true}, // sacrifices its own Body on purpose to free its Soul early
+  turtle:     {...DEFAULT_AXES, capture:0.3, selfCapture:3.0, progress:0.3, soulUrgency:0.3}, // avoids nearly all risk, content to stall
+};
+
 function scoreOption(color, opt){
   const oppColor = color==='white'?'black':'white';
   let score = Math.random()*3; // small jitter so equally-good options aren't always picked in the same order
+  const profile = SCORE_PROFILES[BOT_PROFILE[color]] || SCORE_PROFILES.balanced;
 
   if(opt.type==='place'){
+    // placement is always a Person piece under the current rules (Race pieces
+    // start onboard already), so personWeight is the relevant lever here.
     const startMaster = START_MASTER[color];
     const occ = occupantsAtMaster(startMaster).filter(o=>o.color===color);
     const hitsOwnSoul = occ.some(o=>o.pieceId==='soul');
     const hitsOwnOther = occ.some(o=>o.pieceId!=='soul');
     if(hitsOwnSoul) score -= 100000; // never place on top of your own unmoved Soul
     else if(hitsOwnOther) score -= 15; // wastes a piece, mildly bad
-    else score += 6; // otherwise, getting pieces onto the board is good
+    else score += 6 * profile.personWeight; // otherwise, getting pieces onto the board is good
     // if this piece IS the soul, placing it isn't urgent by itself - no extra bonus
     return score;
   }
@@ -265,61 +324,226 @@ function scoreOption(color, opt){
   // type === 'move'
   const move = opt.move;
   const pieceId = opt.pieceId;
+  const def = getDef(pieceId);
   const p = state.pieces[color][pieceId];
+  const categoryWeight = def.category==='race' ? profile.raceWeight : profile.personWeight;
 
   if(move.kind==='soul-win') return score + 1000000; // immediate win
   if(move.kind==='soul-overshoot-capture') return score - 200000; // self-destructs own Soul
   if(move.kind==='self-lap-capture') return score - 40; // loses this piece for nothing
-  if(move.kind==='soul-enter-endgame') return score + 40; // real progress toward winning
-  if(move.kind==='soul-endgame-shuffle') return score + 8;
 
   if(move.kind==='normal'){
-    score += Math.abs(move.delta) * 0.5; // mild preference for making real progress
+    score += Math.abs(move.delta) * 0.5 * profile.progress * categoryWeight; // preference for making real progress, biased by category
     const ownSoul = state.pieces[color].soul;
     const soulIsOutAndMoving = ownSoul.status==='onboard' && ownSoul.progress >= 8;
     move.occ.forEach(o=>{
       if(o.color===color){
-        if(o.pieceId==='soul') score -= 200000;
-        else if(o.pieceId==='body' && SACRIFICE_OWN_BODY && soulIsOutAndMoving && !state.bodyCaptured[color]){
+        if(o.pieceId==='soul') score -= 200000; // always catastrophic - not a "style" choice
+        else if(o.pieceId==='body' && profile.selfSacrifice && soulIsOutAndMoving && !state.bodyCaptured[color]){
           score += 45; // deliberately unlock our own Soul's path to the Infinite
+        } else if(o.pieceId==='body'){
+          score -= 15 * profile.selfCapture * profile.ownBodyGuard; // extra-cautious about its own Body specifically
         } else {
-          score -= 15; // mildly wasteful self-capture
+          score -= 15 * profile.selfCapture; // mildly wasteful self-capture
         }
+      } else if(o.pieceId==='soul'){
+        score += 100000; // capturing the enemy Soul always wins - not a "style" choice
+      } else if(o.pieceId==='body'){
+        score += 70 * profile.capture * profile.bodyHunt; // extra fixation on the opponent's Body specifically
       } else {
-        score += (o.pieceId==='soul') ? 100000 : (o.pieceId==='body' ? 70 : PIECE_VALUE[o.pieceId]||20);
+        score += (PIECE_VALUE[o.pieceId]||20) * profile.capture;
       }
     });
     // urgency: if this piece IS our own Soul and it hasn't moved off the start yet, moving it is valuable
-    if(pieceId==='soul' && p.progress===0) score += 500;
+    if(pieceId==='soul' && p.progress===0) score += 500 * profile.soulUrgency;
     return score;
   }
   return score;
 }
 
-function botAct(color){
+let PLACE_AND_MOVE_MODE = 'off'; // 'off' | 'mandatory' | 'optional' - direction-1 deployment variants
+
+function collectPlaceOptions(color){
+  const options = [];
+  PIECE_DEFS.forEach(d=>{
+    if(state.pieces[color][d.id].status==='bench') options.push({type:'place', pieceId:d.id});
+  });
+  return options;
+}
+function collectMoveOptions(color){
   const options = [];
   PIECE_DEFS.forEach(d=>{
     const p = state.pieces[color][d.id];
-    if(p.status==='bench') options.push({type:'place', pieceId:d.id});
-  });
-  PIECE_DEFS.forEach(d=>{
-    const p = state.pieces[color][d.id];
     if(p.status==='onboard'){
-      const moves = getLegalMoves(color, d.id);
-      moves.forEach(m=>options.push({type:'move', pieceId:d.id, move:m}));
+      getLegalMoves(color, d.id).forEach(m=>options.push({type:'move', pieceId:d.id, move:m}));
     }
   });
-  if(options.length===0){
-    // no legal action at all - pass (mirrors the UI's Pass button)
-    finishAction(color);
-    return 'passed';
-  }
-  const scored = options.map(o=>({o, sc: scoreOption(color, o)}));
-  scored.sort((a,b)=>b.sc-a.sc);
-  const choice = scored[0].o;
+  return options;
+}
+// Picks the best-scoring option from a list, returning both the choice and
+// its score (the score is needed by 'optional' mode to judge whether a free
+// extra move is actually worth taking).
+function bestOf(color, options){
+  if(options.length===0) return null;
+  let best=null, bestSc=-Infinity;
+  options.forEach(o=>{
+    const sc = scoreOption(color, o);
+    if(sc>bestSc){ bestSc=sc; best=o; }
+  });
+  return {choice:best, score:bestSc};
+}
+function applyChoice(color, choice){
   if(choice.type==='place') placePiece(color, choice.pieceId);
   else performMove(color, choice.pieceId, choice.move);
-  return choice.type;
+}
+
+let optionCounts = []; // instrumentation: how many legal options a player actually has on a turn (branching factor)
+
+// Per-color strategy for the skill-gap experiment: 'greedy' = the usual scoring
+// bot; 'random' = picks uniformly among its legal options, no evaluation at all.
+let BOT_STRATEGY = {white:'greedy', black:'greedy'};
+
+function pickRandom(options){
+  if(!options || options.length===0) return null;
+  return options[Math.floor(Math.random()*options.length)];
+}
+
+// ---------- lookahead bot: 2-ply search (my move, then opponent's best reply) ----------
+// Cheap hand-rolled clone (no log, no functions) so this can run many times per decision.
+function cloneState(s){
+  const cloneOne = obj => {
+    const out = {};
+    for(const id in obj) out[id] = {...obj[id]};
+    return out;
+  };
+  return {
+    round: s.round,
+    firstMover: s.firstMover,
+    dice: s.dice ? {...s.dice} : null,
+    acted: {...s.acted},
+    bodyCaptured: {...s.bodyCaptured},
+    roundsWithNoBodyCaptured: s.roundsWithNoBodyCaptured,
+    winner: s.winner,
+    winReason: s.winReason,
+    isDraw: s.isDraw,
+    firstContactRound: s.firstContactRound,
+    log: [], // lookahead doesn't need history - skip cloning it to keep this cheap
+    pieces: { white: cloneOne(s.pieces.white), black: cloneOne(s.pieces.black) },
+  };
+}
+
+// Static "how good is this board" evaluator - used as the leaf-node score for
+// the lookahead search (unlike scoreOption, which scores a specific move).
+// Personality-aware: uses the same weights as scoreOption so a lookahead bot
+// with e.g. the 'aggressive' profile actually searches for boards that suit
+// an aggressive style, not just generically "good" boards.
+function evaluateBoard(s, color){
+  const oppColor = color==='white'?'black':'white';
+  const profile = SCORE_PROFILES[BOT_PROFILE[color]] || SCORE_PROFILES.balanced;
+  let score = 0;
+  PIECE_DEFS.forEach(d=>{
+    const val = PIECE_VALUE[d.id] || 20;
+    const categoryWeight = d.category==='race' ? profile.raceWeight : profile.personWeight;
+    const mine = s.pieces[color][d.id];
+    const theirs = s.pieces[oppColor][d.id];
+    const ownGuard = d.id==='body' ? profile.ownBodyGuard : 1;
+    const oppHunt = d.id==='body' ? profile.bodyHunt : 1;
+    if(mine.status!=='captured') score += val*profile.selfCapture*ownGuard + (mine.status==='onboard' ? mine.progress*0.3*profile.progress*categoryWeight : 0);
+    if(theirs.status!=='captured') score -= val*profile.capture*oppHunt + (theirs.status==='onboard' ? theirs.progress*0.3 : 0);
+  });
+  const mySoul = s.pieces[color].soul;
+  if(mySoul.status==='onboard'){
+    const remaining = Math.abs(TRACK_LEN - mySoul.progress);
+    score += Math.max(0, 40-remaining) * profile.soulUrgency; // extra pull toward the exact winning square, scaled by how urgently this style wants it
+  }
+  if(s.winner===color) score += 5000000;
+  else if(s.winner && s.winner!==color && s.winner!=='draw') score -= 5000000;
+  return score;
+}
+
+// For each legal option, simulate taking it, then simulate the opponent's best
+// greedy reply within the SAME round (dice are shared per-round, so this reply
+// is genuinely knowable, not a guess) - then evaluate the resulting board.
+// If the round rolls over instead (this color was the second mover), there's
+// nothing knowable to look ahead into - the next dice roll is a real chance
+// event - so it falls back to evaluating the position right after this move.
+function pickLookahead(color, options){
+  if(!options || options.length===0) return null;
+  const oppColor = color==='white'?'black':'white';
+  const realState = state;
+  let bestOpt = null, bestScore = -Infinity;
+
+  options.forEach(opt=>{
+    state = cloneState(realState);
+    applyChoice(color, opt);
+    if(!state.winner) finishAction(color);
+
+    let score;
+    if(state.winner){
+      score = state.winner===color ? 5000000 : (state.winner==='draw' ? 0 : -5000000);
+    } else if(currentMover()===oppColor && state.dice){
+      const oppOptions = [...collectPlaceOptions(oppColor), ...collectMoveOptions(oppColor)];
+      if(oppOptions.length>0) applyChoice(oppColor, bestOf(oppColor, oppOptions).choice);
+      score = evaluateBoard(state, color);
+    } else {
+      score = evaluateBoard(state, color); // round rolled over - next dice unknown, stop here
+    }
+
+    if(score>bestScore){ bestScore=score; bestOpt=opt; }
+  });
+
+  state = realState;
+  return bestOpt;
+}
+
+function pickByStrategy(color, options){
+  if(!options || options.length===0) return null;
+  const strategy = BOT_STRATEGY[color];
+  if(strategy==='random') return pickRandom(options);
+  if(strategy==='lookahead') return pickLookahead(color, options);
+  return bestOf(color, options).choice;
+}
+
+function botAct(color){
+  if(PLACE_AND_MOVE_MODE==='off'){
+    const options = [...collectPlaceOptions(color), ...collectMoveOptions(color)];
+    optionCounts.push(options.length);
+    if(options.length===0){ finishAction(color); return 'passed'; }
+    const choice = pickByStrategy(color, options);
+    applyChoice(color, choice);
+    finishAction(color);
+    return choice.type;
+  }
+
+  // Deployment modes: while this color still has bench pieces, it tries to
+  // place AND move in the same round before its turn ends. 'mandatory'
+  // always takes the extra move if one is legal; 'optional' only takes it
+  // when the best available move doesn't score as actively bad (i.e. isn't
+  // a wasteful self-capture or similar) - a rough stand-in for "the player
+  // chooses not to burn the extra move on something bad."
+  const stillHasBench = collectPlaceOptions(color).length>0;
+  let didSomething = false;
+
+  if(stillHasBench){
+    const placeChoice = pickByStrategy(color, collectPlaceOptions(color));
+    if(placeChoice){ applyChoice(color, placeChoice); didSomething = true; }
+    if(!state.winner){
+      const moveOptions = collectMoveOptions(color);
+      const takeExtraMove = BOT_STRATEGY[color]==='random'
+        ? (moveOptions.length>0 && (PLACE_AND_MOVE_MODE==='mandatory' || Math.random()<0.5))
+        : (moveOptions.length>0 && (PLACE_AND_MOVE_MODE==='mandatory' || bestOf(color, moveOptions).score>0));
+      if(takeExtraMove){
+        applyChoice(color, pickByStrategy(color, moveOptions));
+        didSomething = true;
+      }
+    }
+  } else {
+    const moveChoice = pickByStrategy(color, collectMoveOptions(color));
+    if(moveChoice){ applyChoice(color, moveChoice); didSomething = true; }
+  }
+
+  finishAction(color);
+  return didSomething ? 'deployment-turn' : 'passed';
 }
 
 function simulateOneGame(maxRounds){
@@ -348,14 +572,21 @@ function simulateOneGame(maxRounds){
     stalemate: !state.winner,
     bodyCapturedWhite: state.bodyCaptured.white,
     bodyCapturedBlack: state.bodyCaptured.black,
+    firstContactRound: state.firstContactRound,
   };
 }
 
 const N = parseInt(process.argv[2] || '500', 10);
 const MAX_ROUNDS = parseInt(process.argv[3] || '400', 10);
 
-function runBatch(label, sacrificeMode){
-  SACRIFICE_OWN_BODY = sacrificeMode;
+function runBatch(label, {sacrifice=false, soulBonus=0, placeAndMove='off', preplaceRace=false, bonusMode='flex', diceMenu='full'}={}){
+  SACRIFICE_OWN_BODY = sacrifice;
+  SOUL_BONUS_AFTER_OWN_BODY_CAPTURED = soulBonus;
+  PLACE_AND_MOVE_MODE = placeAndMove;
+  PREPLACE_RACE_PIECES = preplaceRace;
+  BONUS_MODE = bonusMode;
+  DICE_MENU_MODE = diceMenu;
+  optionCounts = [];
   let wins = {white:0, black:0};
   let winReasons = {};
   let stalemates = 0;
@@ -363,7 +594,10 @@ function runBatch(label, sacrificeMode){
   let totalRounds = 0;
   let errors = 0;
   let bodyCapturedNeitherCount = 0;
+  let infiniteWins = 0;
+  let soulCaptureWins = 0;
   const roundCounts = [];
+  const contactRounds = [];
 
   for(let i=0;i<N;i++){
     try {
@@ -376,9 +610,12 @@ function runBatch(label, sacrificeMode){
       } else {
         wins[r.winner]++;
         winReasons[r.winReason] = (winReasons[r.winReason]||0)+1;
+        if(r.winReason.includes('entered the Infinite')) infiniteWins++;
+        else if(r.winReason.includes('captured the opposing Soul')) soulCaptureWins++;
       }
       totalRounds += r.rounds;
       roundCounts.push(r.rounds);
+      if(r.firstContactRound!==null) contactRounds.push(r.firstContactRound);
     } catch(e){
       errors++;
       console.log('GAME THREW AN ERROR:', e.message);
@@ -388,6 +625,11 @@ function runBatch(label, sacrificeMode){
   roundCounts.sort((a,b)=>a-b);
   const median = roundCounts[Math.floor(roundCounts.length/2)];
   const p90 = roundCounts[Math.floor(roundCounts.length*0.9)];
+  const decisiveGames = infiniteWins + soulCaptureWins;
+
+  contactRounds.sort((a,b)=>a-b);
+  const contactMedian = contactRounds.length ? contactRounds[Math.floor(contactRounds.length/2)] : NaN;
+  const contactAvg = contactRounds.length ? (contactRounds.reduce((a,b)=>a+b,0)/contactRounds.length).toFixed(1) : 'n/a';
 
   console.log(`\n=== ${label}: ${N} games (cap ${MAX_ROUNDS} rounds) ===`);
   console.log(`White wins: ${wins.white} (${(100*wins.white/N).toFixed(1)}%)  Black wins: ${wins.black} (${(100*wins.black/N).toFixed(1)}%)`);
@@ -395,9 +637,147 @@ function runBatch(label, sacrificeMode){
   console.log(`Other stalemates (hit round cap without the draw rule catching it): ${stalemates} (${(100*stalemates/N).toFixed(1)}%) -- of which neither body ever captured: ${bodyCapturedNeitherCount}`);
   console.log(`Runtime errors: ${errors}`);
   console.log(`Median game length: ${median} rounds, 90th pct: ${p90}, average: ${(totalRounds/N).toFixed(1)}`);
+  console.log(`First cross-capture (real contact): median round ${contactMedian}, average round ${contactAvg}`);
+  console.log(`Infinite-entry wins: ${infiniteWins} (${(100*infiniteWins/decisiveGames).toFixed(1)}% of decisive games)  Soul-capture wins: ${soulCaptureWins} (${(100*soulCaptureWins/decisiveGames).toFixed(1)}% of decisive games)`);
+  const sortedOpts = [...optionCounts].sort((a,b)=>a-b);
+  const optMedian = sortedOpts.length ? sortedOpts[Math.floor(sortedOpts.length/2)] : NaN;
+  const optAvg = sortedOpts.length ? (sortedOpts.reduce((a,b)=>a+b,0)/sortedOpts.length).toFixed(1) : 'n/a';
+  const optP90 = sortedOpts.length ? sortedOpts[Math.floor(sortedOpts.length*0.9)] : NaN;
+  console.log(`Legal options per turn (branching factor): median ${optMedian}, average ${optAvg}, 90th pct ${optP90}`);
   console.log(`Win reasons:`, winReasons);
 }
 
-runBatch('BASELINE (no deliberate body-sacrifice incentive)', false);
-runBatch('BODY-SACRIFICE VARIANT (bonus for self-capturing own Body once Soul is out and moving)', true);
+// ============ strategy-gap harness: pits two named bot strategies against each other ============
+// The "champion" strategy alternates between white/black each game so
+// first-mover advantage doesn't bias the result.
+function runStrategyGapBatch(label, championStrategy, opponentStrategy, ruleOpts={}){
+  SACRIFICE_OWN_BODY = ruleOpts.sacrifice||false;
+  SOUL_BONUS_AFTER_OWN_BODY_CAPTURED = ruleOpts.soulBonus||0;
+  PLACE_AND_MOVE_MODE = ruleOpts.placeAndMove||'off';
+  PREPLACE_RACE_PIECES = ruleOpts.preplaceRace||false;
+  BONUS_MODE = ruleOpts.bonusMode||'flex';
+  DICE_MENU_MODE = ruleOpts.diceMenu||'full';
+
+  let championWins=0, opponentWins=0, draws=0, stalemates=0, errors=0;
+  const roundCounts = [];
+
+  for(let i=0;i<N;i++){
+    const championColor = i%2===0 ? 'white' : 'black';
+    const opponentColor = championColor==='white' ? 'black' : 'white';
+    BOT_STRATEGY = {[championColor]:championStrategy, [opponentColor]:opponentStrategy};
+    try{
+      const r = simulateOneGame(MAX_ROUNDS);
+      roundCounts.push(r.rounds);
+      if(r.winner==='draw') draws++;
+      else if(r.stalemate) stalemates++;
+      else if(r.winner===championColor) championWins++;
+      else opponentWins++;
+    } catch(e){
+      errors++;
+      console.log('GAME THREW AN ERROR:', e.message);
+    }
+  }
+
+  const decisive = championWins+opponentWins;
+  roundCounts.sort((a,b)=>a-b);
+  const median = roundCounts.length ? roundCounts[Math.floor(roundCounts.length/2)] : NaN;
+
+  console.log(`\n=== STRATEGY GAP (${championStrategy} vs ${opponentStrategy}): ${label}: ${N} games (cap ${MAX_ROUNDS} rounds) ===`);
+  console.log(`${championStrategy} wins: ${championWins} (${(100*championWins/decisive).toFixed(1)}% of decisive games)`);
+  console.log(`${opponentStrategy} wins: ${opponentWins} (${(100*opponentWins/decisive).toFixed(1)}% of decisive games)`);
+  console.log(`Draws: ${draws} (${(100*draws/N).toFixed(1)}%)  Other stalemates: ${stalemates}  Runtime errors: ${errors}`);
+  console.log(`Median game length: ${median} rounds`);
+}
+
+// ============ profile round-robin: do multiple distinct playstyles all stay viable, or does one dominate? ============
+function runProfileRoundRobin(label, strategy, gamesPerMatchup, ruleOpts={}){
+  SACRIFICE_OWN_BODY = ruleOpts.sacrifice||false;
+  SOUL_BONUS_AFTER_OWN_BODY_CAPTURED = ruleOpts.soulBonus||0;
+  PLACE_AND_MOVE_MODE = ruleOpts.placeAndMove||'off';
+  PREPLACE_RACE_PIECES = ruleOpts.preplaceRace||false;
+  BONUS_MODE = ruleOpts.bonusMode||'flex';
+  DICE_MENU_MODE = ruleOpts.diceMenu||'full';
+  BOT_STRATEGY = {white:strategy, black:strategy}; // both sides use the same search depth - only the profile (style) differs
+
+  const profiles = Object.keys(SCORE_PROFILES);
+  console.log(`\n=== PROFILE ROUND-ROBIN (${strategy}): ${label} (${gamesPerMatchup} games/matchup) ===`);
+
+  const allRoundCounts = [];
+  let allInfiniteWins = 0, allSoulCaptureWins = 0;
+
+  for(let x=0; x<profiles.length; x++){
+    for(let y=x+1; y<profiles.length; y++){
+      const a = profiles[x], b = profiles[y];
+      let aWins=0, bWins=0, undecided=0;
+      for(let i=0;i<gamesPerMatchup;i++){
+        const aColor = i%2===0 ? 'white' : 'black';
+        const bColor = aColor==='white' ? 'black' : 'white';
+        BOT_PROFILE = {[aColor]:a, [bColor]:b};
+        const r = simulateOneGame(MAX_ROUNDS);
+        allRoundCounts.push(r.rounds);
+        if(r.stalemate || r.winner==='draw') undecided++;
+        else {
+          if(r.winner===aColor) aWins++; else bWins++;
+          if(r.winReason.includes('entered the Infinite')) allInfiniteWins++;
+          else if(r.winReason.includes('captured the opposing Soul')) allSoulCaptureWins++;
+        }
+      }
+      const decisive = aWins+bWins;
+      console.log(`${a} vs ${b}: ${a} wins ${(100*aWins/decisive).toFixed(1)}% (${aWins}/${decisive})  |  undecided: ${undecided}`);
+    }
+  }
+
+  allRoundCounts.sort((a,b)=>a-b);
+  const median = allRoundCounts[Math.floor(allRoundCounts.length/2)];
+  const avg = (allRoundCounts.reduce((a,b)=>a+b,0)/allRoundCounts.length).toFixed(1);
+  const p90 = allRoundCounts[Math.floor(allRoundCounts.length*0.9)];
+  const decisiveTotal = allInfiniteWins + allSoulCaptureWins;
+  console.log(`--- aggregate across all matchups (${allRoundCounts.length} games) ---`);
+  console.log(`Game length: median ${median}, average ${avg}, 90th pct ${p90}`);
+  console.log(`Infinite-entry wins: ${allInfiniteWins} (${(100*allInfiniteWins/decisiveTotal).toFixed(1)}% of decisive games)  Soul-capture wins: ${allSoulCaptureWins} (${(100*allSoulCaptureWins/decisiveTotal).toFixed(1)}%)`);
+}
+
+// ============ new persona impact test: each new persona vs 'balanced', under the live game's actual rules ============
+function runPersonaImpact(personaId, gamesCount, ruleOpts={}){
+  SACRIFICE_OWN_BODY = ruleOpts.sacrifice||false;
+  SOUL_BONUS_AFTER_OWN_BODY_CAPTURED = ruleOpts.soulBonus||0;
+  PLACE_AND_MOVE_MODE = ruleOpts.placeAndMove||'off';
+  PREPLACE_RACE_PIECES = ruleOpts.preplaceRace||false;
+  BONUS_MODE = ruleOpts.bonusMode||'flex';
+  DICE_MENU_MODE = ruleOpts.diceMenu||'full';
+  BOT_STRATEGY = {white:'greedy', black:'greedy'};
+
+  let personaWins=0, balancedWins=0, undecided=0;
+  let infiniteWins=0, soulCaptureWins=0;
+  const roundCounts = [];
+
+  for(let i=0;i<gamesCount;i++){
+    const personaColor = i%2===0 ? 'white' : 'black';
+    const balancedColor = personaColor==='white' ? 'black' : 'white';
+    BOT_PROFILE = {[personaColor]:personaId, [balancedColor]:'balanced'};
+    const r = simulateOneGame(MAX_ROUNDS);
+    roundCounts.push(r.rounds);
+    if(r.stalemate || r.winner==='draw'){ undecided++; continue; }
+    if(r.winner===personaColor) personaWins++; else balancedWins++;
+    if(r.winReason.includes('entered the Infinite')) infiniteWins++;
+    else if(r.winReason.includes('captured the opposing Soul')) soulCaptureWins++;
+  }
+
+  roundCounts.sort((a,b)=>a-b);
+  const median = roundCounts[Math.floor(roundCounts.length/2)];
+  const avg = (roundCounts.reduce((a,b)=>a+b,0)/roundCounts.length).toFixed(1);
+  const p90 = roundCounts[Math.floor(roundCounts.length*0.9)];
+  const decisive = infiniteWins + soulCaptureWins;
+
+  console.log(`\n=== ${personaId} vs balanced: ${gamesCount} games (cap ${MAX_ROUNDS} rounds) ===`);
+  console.log(`${personaId} wins: ${personaWins} (${(100*personaWins/(personaWins+balancedWins)).toFixed(1)}% of decisive games)  balanced wins: ${balancedWins}`);
+  console.log(`Undecided (draw/stalemate): ${undecided} (${(100*undecided/gamesCount).toFixed(1)}%)`);
+  console.log(`Game length: median ${median}, average ${avg}, 90th pct ${p90}`);
+  console.log(`Infinite-entry wins: ${infiniteWins} (${decisive?(100*infiniteWins/decisive).toFixed(1):'n/a'}% of decisive games)  Soul-capture wins: ${soulCaptureWins}`);
+}
+
+const LIVE_RULES = {bonusMode:'fixed', diceMenu:'sum-only', preplaceRace:true}; // matches nefesh.html as currently shipped
+['vanguard','herald','assassin','guardian','zealot','turtle'].forEach(id=>{
+  runPersonaImpact(id, 400, LIVE_RULES);
+});
 
