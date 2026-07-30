@@ -1170,8 +1170,11 @@ function renderBoard(){
     const identity = loopIdentityAtScreenSlot(side);
     const blackDir = blackDirectionOnLoop(identity);
     const whiteDir = -blackDir;
+    // Mirror the color order on the left loop so the two loops read as a
+    // left-right mirror image of each other, not an identical repeat.
+    const mirrored = side==='left';
     SIGNPOST_ANGLES.forEach((angle,i)=>{
-      const isBlack = i%2===0;
+      const isBlack = mirrored ? (i%2===1) : (i%2===0);
       const dir = isBlack ? blackDir : whiteDir;
       const fill = isBlack ? '#141110' : '#f4ecd8';
       const stroke = isBlack ? '#8a7757' : '#5c422c';
