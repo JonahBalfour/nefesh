@@ -164,12 +164,23 @@
   .overlay-box h2{font-family:'Rye'; color:var(--gold-bright); font-size:32px; margin:0 0 10px;}
   .overlay-box p{color:var(--parchment); font-size:14px;}
   small.hint{color:#a89a86; font-size:11px;}
+  .howto-tab-btn{background:#2c2018; border:1px solid #6e5a42;}
+  .howto-tab-btn.active{background:var(--rust); border-color:#6e2f16;}
+  #howto-content h3{font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold); font-size:14px; margin:18px 0 8px;}
+  #howto-content h3:first-child{margin-top:0;}
+  #howto-content p{margin:0 0 10px;}
+  #howto-content ul{margin:0 0 12px; padding-left:20px;}
+  #howto-content li{margin-bottom:8px;}
+  #howto-content b{color:var(--gold-bright);}
 </style>
 </head>
 <body>
 
 <h1 class="title">NEFESH</h1>
 <p class="subtitle">a prototype board for playtesting — click to place, move, and capture</p>
+<div style="text-align:center; margin-bottom:18px;">
+  <button id="howto-btn" style="padding:9px 20px; font-size:13px;">How to Play</button>
+</div>
 
 <div class="app">
 
@@ -268,6 +279,21 @@
     <h2 id="win-title">White wins</h2>
     <p id="win-reason"></p>
     <button id="reset-btn">New game</button>
+  </div>
+</div>
+
+<div class="overlay" id="howto-overlay">
+  <div class="overlay-box" style="max-width:720px; max-height:82vh; overflow-y:auto; text-align:left; padding:26px 30px;">
+    <div class="row" style="align-items:flex-start; margin-bottom:14px;">
+      <h2 style="margin:0;">How to Play</h2>
+      <button id="howto-close-btn">Close</button>
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+      <button class="howto-tab-btn" data-tab="rules">Rules</button>
+      <button class="howto-tab-btn" data-tab="strategy">Strategy Tips</button>
+      <button class="howto-tab-btn" data-tab="personas">Persona Guide</button>
+    </div>
+    <div id="howto-content" style="font-size:13.5px; line-height:1.65; color:var(--parchment);"></div>
   </div>
 </div>
 
@@ -1187,6 +1213,97 @@ document.getElementById('copy-log-btn').addEventListener('click', (e)=>{
     } catch(err){ /* corrupted saved data - nothing to do */ }
   });
 })();
+
+// ---------- How to Play guide ----------
+const HOWTO_CONTENT = {
+  rules: `
+    <h3>THE BOARD</h3>
+    <p>A figure-8: two loops connected by a central hub, with the <b>Infinite</b> right at the center. Each color has a starting dot in the hub (Black top-left, White bottom-right), and each color's path winds all the way around one loop, through the hub, around the other loop, and back — 36 spaces in a full circuit.</p>
+    <h3>YOUR PIECES</h3>
+    <p>8 per side, in two categories:</p>
+    <ul>
+      <li><b>Race pieces</b> (Creature, Dwarf, Man, Elf) — forward only. They start the game already on the board, at the front of your path.</li>
+      <li><b>Person pieces</b> (Mind, Will, Body, Soul) — can move forward or backward. They start on your bench; you place them onto your starting dot when you're ready to bring them in.</li>
+    </ul>
+    <h3>MOVEMENT</h3>
+    <p>Every piece has a bonus (Creature +0, Dwarf +1, Man +2, Elf +3, Mind +1, Will +2, Body +3, Soul +0). Each move is <b>the sum of both dice, plus that piece's bonus</b> — always the full bonus, no partial amounts, and no other dice combinations. So if you roll a 4 and 3 (sum 7), your Elf (+3) always moves exactly 10.</p>
+    <h3>YOUR TURN</h3>
+    <p>Dice are rolled once per round, shared by both players that round. On your turn, you either place a Person piece from your bench onto your starting dot, or move one piece already on the board.</p>
+    <h3>CAPTURES</h3>
+    <p>Landing on <b>any</b> occupied space — opponent's or your own — captures whatever's there. Watch out: your Race pieces start sitting exactly on your own starting dot, so placing a Person piece there before that Race piece has moved away will self-capture it.</p>
+    <h3>HOW TO WIN</h3>
+    <p>Two ways:</p>
+    <ul>
+      <li>Capture the opponent's Soul.</li>
+      <li>Get your own Soul all the way around the board and land it <b>exactly</b> on the Infinite.</li>
+    </ul>
+    <p>The catch that ties both together: you can't capture an opponent's Soul until <b>their</b> Body has been captured, and you can't send your own Soul into the Infinite until <b>your own</b> Body has been captured. So every game has a real turning point — once a Body falls (yours or theirs), that Soul becomes both huntable <i>and</i> eligible to race for the Infinite.</p>
+    <p>If 80 rounds pass with neither Body ever captured, the game is called a draw.</p>
+  `,
+  strategy: `
+    <p>A few concrete habits that go a long way if strategy games don't usually come naturally to you — none of this requires deep calculation, just remembering to ask the right question at the right moment.</p>
+    <h3>GET YOUR BODY AND SOUL OUT, BUT NOT RECKLESSLY</h3>
+    <p>They're your most valuable pieces — literally the win condition. Waiting too long to place them just means less time to use them, but placing one onto a square an enemy piece can easily reach next round is asking for trouble. Glance at what's nearby before you place.</p>
+    <h3>THINK ABOUT WHAT "BODY CAPTURED" ACTUALLY UNLOCKS</h3>
+    <p>Capturing the opponent's Body lets you go after their Soul — but it <i>also</i> frees their Soul to start racing for the Infinite. If your own Soul isn't developed yet, you might be kicking off a race you're not ready for. Sometimes the better move is patience.</p>
+    <h3>PROTECT YOUR OWN BODY FOR AS LONG AS YOU REASONABLY CAN</h3>
+    <p>As long as it's alive, your Soul is completely safe from capture. The moment it falls, your Soul becomes fair game — so don't leave your Body sitting still in the open once enemy pieces are within striking distance.</p>
+    <h3>USE RACE PIECES AS SCOUTS, NOT TREASURES</h3>
+    <p>They're worth far less than a Person piece and can only move forward, so use them to control ground, threaten a square, or soak up a capture that would otherwise land on something valuable.</p>
+    <h3>DO THE MATH ON DISTANCE</h3>
+    <p>Since every move is (dice sum + a fixed bonus), you always know your exact possible distances before you commit. If your Soul needs to land exactly on the Infinite, count how far away it actually is, and keep half an eye on what it'll take to get there.</p>
+    <h3>CHECK WHAT'S "IN RANGE" BEFORE YOU MOVE</h3>
+    <p>Before settling a piece onto a square, glance at nearby enemy pieces and roughly what sums they could roll next round. It's often the whole difference between a strong square and a trap.</p>
+    <h3>NOT EVERY CAPTURE IS WORTH TAKING</h3>
+    <p>A capture that leaves your Body or Soul exposed right afterward can cost you the game even if it looks tempting in the moment. Before you take it, ask: "what can they do to me right after this?"</p>
+  `,
+  personas: `
+    <p>Ten play styles, each exploitable in a different way — and a few thoughts on what changes as difficulty goes up.</p>
+    <h3>RANGER (balanced)</h3>
+    <p>Plays it straight — values captures, safety, and progress evenly. No glaring weakness, which makes it the best one to practice fundamentals against. If you can consistently beat Ranger, you're playing well.</p>
+    <h3>GUNSLINGER (aggressive)</h3>
+    <p>Chases every capture it can find and doesn't worry much about risk. Beat it by leaving out tempting-but-bad trades — a capture that looks good but exposes something bigger right after. It'll often take the bait.</p>
+    <h3>WATCHMAN (defensive)</h3>
+    <p>Very reluctant to expose any piece, even for a good trade. It usually won't come to you — press the advantage, develop faster, and don't wait around for it to make the first move.</p>
+    <h3>PILGRIM (racer)</h3>
+    <p>Focused on rushing its own Soul toward the Infinite rather than fighting you directly. Counter it by reaching its Body first — but once that happens, its Soul finally has a real timeline, so make sure yours is ready to compete too.</p>
+    <h3>VANGUARD (race-rush)</h3>
+    <p>Slow to bring its Body and Soul into play, since it's busy pushing Race pieces forward. Real opening here: get your own Body and Soul developed while it's still setting up.</p>
+    <h3>HERALD (person-rush)</h3>
+    <p>The opposite of Vanguard — develops its Person pieces fast but leaves its Race pieces sitting still. Those stationary pieces are easy, low-risk early targets.</p>
+    <h3>ASSASSIN (body-hunter)</h3>
+    <p>Obsessed with reaching your Body specifically. Keep it moving rather than sitting still — and remember, if it does capture your Body, your own Soul is now free too. It's not purely a loss, it's the start of your race.</p>
+    <h3>GUARDIAN (body-guard)</h3>
+    <p>Goes to unusual lengths to keep its own Body safe, so a direct fight for it may take a long time. Consider racing for the Infinite instead of forcing a Body capture head-on.</p>
+    <h3>ZEALOT (self-sacrifice)</h3>
+    <p>Will voluntarily give up its own Body once its Soul is out and moving, to start its Infinite race early on its own terms. Expect this sooner than with other personas — keep your own Soul's timeline in mind so you're not caught off guard.</p>
+    <h3>TURTLE (stall)</h3>
+    <p>Avoids nearly all risk, but still takes a clear win when one's obviously available. It won't blunder into bad trades, so patient, genuinely good moves beat it — just don't let its slow pace lull you into being careless yourself.</p>
+    <h3>DIFFICULTY: WHAT ACTUALLY CHANGES</h3>
+    <ul>
+      <li><b>Easy</b> — moves completely at random. Good for practicing the rules and mechanics without being punished for mistakes.</li>
+      <li><b>Normal</b> — reacts to the board as it stands, but doesn't think ahead. Simple two-move traps (bait now, capture next turn) often work.</li>
+      <li><b>Hard</b> — thinks one move ahead, including guessing your best response. Traps that only work if it can't see the follow-up won't work anymore — you'll need to actually out-maneuver it, not just outsmart it in the moment.</li>
+    </ul>
+  `,
+};
+
+function showHowtoTab(tabId){
+  document.querySelectorAll('.howto-tab-btn').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.tab===tabId);
+  });
+  document.getElementById('howto-content').innerHTML = HOWTO_CONTENT[tabId];
+}
+document.querySelectorAll('.howto-tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>showHowtoTab(btn.dataset.tab));
+});
+document.getElementById('howto-btn').addEventListener('click', ()=>{
+  showHowtoTab('rules');
+  document.getElementById('howto-overlay').classList.add('show');
+});
+document.getElementById('howto-close-btn').addEventListener('click', ()=>{
+  document.getElementById('howto-overlay').classList.remove('show');
+});
 
 render();
 </script>
