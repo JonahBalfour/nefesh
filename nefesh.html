@@ -197,6 +197,10 @@
         <label><input type="radio" name="opponent-mode" value="bot-black"> Play as White vs Computer</label>
         <label><input type="radio" name="opponent-mode" value="bot-white"> Play as Black vs Computer</label>
       </div>
+      <div id="flip-board-row" style="margin-top:10px;">
+        <button id="flip-board-btn" style="padding:6px 14px; font-size:12px;">Flip Board</button>
+        <span style="font-size:11px; color:var(--parchment-dim); margin-left:8px;">Turn the board for the other player</span>
+      </div>
       <div id="opponent-picker" style="display:none; margin-top:10px;">
         <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Play style:</div>
         <select id="opponent-persona-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
@@ -395,8 +399,13 @@ const FLIP_MAP = (()=>{
   map[16]=18; map[18]=16; map[17]=19; map[19]=17;
   return map;
 })();
+let manualBoardFlip = false; // pass-and-play only: a physical device would get turned around for the other player - this is the software equivalent
 function isBoardFlipped(){
-  return botColor==='white'; // botColor is the COMPUTER's color - so the human is playing Black here, turn the board to face them
+  // vs computer: spaces 18/19 (Black's seat) are already at the bottom by
+  // default, so only playing as White (sitting at the 16/17 seat) needs a
+  // flip. Pass-and-play: no fixed human color, so it's a manual toggle instead.
+  if(botColor) return botColor==='black'; // botColor is the COMPUTER's color, so botColor==='black' means the human is playing White
+  return manualBoardFlip;
 }
 function visualMaster(idx){
   return isBoardFlipped() ? MASTER[FLIP_MAP[idx]] : MASTER[idx];
@@ -1186,11 +1195,18 @@ document.getElementById('opponent-difficulty-select').addEventListener('change',
   render();
 });
 
+document.getElementById('flip-board-btn').addEventListener('click', ()=>{
+  manualBoardFlip = !manualBoardFlip;
+  render();
+});
+
 document.querySelectorAll('input[name="opponent-mode"]').forEach(radio=>{
   radio.addEventListener('change', (e)=>{
     const v = e.target.value;
     botColor = v==='bot-black' ? 'black' : (v==='bot-white' ? 'white' : null);
     document.getElementById('opponent-picker').style.display = botColor ? 'block' : 'none';
+    document.getElementById('flip-board-row').style.display = botColor ? 'none' : 'block';
+    manualBoardFlip = false; // reset the manual toggle when leaving pass-and-play
     syncBotProfile();
     resetState();
     render();
