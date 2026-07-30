@@ -1146,7 +1146,7 @@ function renderBoard(){
     infG.appendChild(winRing);
   }
   infG.appendChild(checkeredInfinitySymbol(INFINITE_PT.x, INFINITE_PT.y, INF_R*0.62, INF_R*0.09, 16));
-  infG.appendChild(diagonalGuideline(INFINITE_PT.x, INFINITE_PT.y, INF_R*0.78));
+  infG.appendChild(diagonalGuideline(INFINITE_PT.x, INFINITE_PT.y, INF_R*0.90));
   infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+INF_R+16, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill:'var(--gold-bright)'})).textContent='INF';
   svg.appendChild(infG);
 
