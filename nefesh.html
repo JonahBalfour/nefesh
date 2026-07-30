@@ -965,15 +965,34 @@ function render(){
 // lines along the same diagonal axes. Unlike the old icon, this needs no
 // flip-handling at all: a 180-degree rotation maps each diagonal axis onto
 // itself, so the lines are correct in both orientations without change.
+// Small filled triangle at the end of a guideline, pointing outward along
+// the radius - used to mark which quadrant (light or dark) each end connects
+// to, same meaning the old bold X carried.
+function smallArrowTip(cx,cy,angle,len,fill,stroke){
+  const dirX=Math.cos(angle), dirY=Math.sin(angle);
+  const tipX=cx+len*dirX, tipY=cy+len*dirY;
+  const size=7, halfW=4;
+  const baseX=tipX-dirX*size, baseY=tipY-dirY*size;
+  const perpX=-dirY, perpY=dirX;
+  return el('polygon',{
+    points:`${tipX},${tipY} ${baseX+perpX*halfW},${baseY+perpY*halfW} ${baseX-perpX*halfW},${baseY-perpY*halfW}`,
+    fill, stroke, 'stroke-width':0.8, 'stroke-linejoin':'round'
+  });
+}
 function diagonalGuideline(cx,cy,len){
   const g = el('g',{});
+  // Same rule as the old X: each end's color marks which quadrant (light or
+  // dark) it connects to, so it flips along with the board exactly like the
+  // old icon did - only the line's own axis is flip-invariant, not its ends.
+  const flip = isBoardFlipped() ? Math.PI : 0;
   [225,315].forEach(deg=>{
-    const rad = deg*Math.PI/180;
-    g.appendChild(el('line',{
-      x1:cx-len*Math.cos(rad), y1:cy-len*Math.sin(rad),
-      x2:cx+len*Math.cos(rad), y2:cy+len*Math.sin(rad),
-      stroke:'rgba(224,178,90,0.4)', 'stroke-width':1.4, 'stroke-dasharray':'3,3'
-    }));
+    const blackAngle = deg*Math.PI/180 + flip;
+    const whiteAngle = blackAngle + Math.PI;
+    const bx=cx+len*Math.cos(blackAngle), by=cy+len*Math.sin(blackAngle);
+    const wx=cx+len*Math.cos(whiteAngle), wy=cy+len*Math.sin(whiteAngle);
+    g.appendChild(el('line',{x1:bx, y1:by, x2:wx, y2:wy, stroke:'rgba(224,178,90,0.4)', 'stroke-width':1.4, 'stroke-dasharray':'3,3'}));
+    g.appendChild(smallArrowTip(cx,cy,blackAngle,len,'#141110','#8a7757'));
+    g.appendChild(smallArrowTip(cx,cy,whiteAngle,len,'#f4ecd8','#5c422c'));
   });
   return g;
 }
