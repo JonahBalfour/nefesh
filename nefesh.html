@@ -1023,6 +1023,7 @@ function render(){
         winner: state.winner,
         winReason: state.winReason
       }));
+      refreshLastGameBanner();
     } catch(e){ /* localStorage unavailable (e.g. private browsing) - not critical, skip silently */ }
   } else {
     document.getElementById('win-overlay').classList.remove('show');
@@ -1497,19 +1498,26 @@ document.getElementById('copy-log-btn').addEventListener('click', (e)=>{
   revealForCopy(text || '(no moves logged yet)', e.target);
 });
 
-(function initLastGameNote(){
+// Re-reads localStorage fresh every time (rather than caching a snapshot from
+// page load) so this banner - and the log "Copy it" hands over - always
+// reflects the most recently finished game, including one finished earlier in
+// this same browser session, not just whatever was saved before the page loaded.
+function refreshLastGameBanner(){
   let saved;
   try{ saved = localStorage.getItem('nefesh-last-game-log'); } catch(e){ saved = null; }
+  document.getElementById('last-game-note').style.display = saved ? 'block' : 'none';
+}
+document.getElementById('copy-lastgame-btn').addEventListener('click', (e)=>{
+  let saved;
+  try{ saved = localStorage.getItem('nefesh-last-game-log'); } catch(err){ saved = null; }
   if(!saved) return;
-  document.getElementById('last-game-note').style.display = 'block';
-  document.getElementById('copy-lastgame-btn').addEventListener('click', (e)=>{
-    try{
-      const data = JSON.parse(saved);
-      const header = `${data.winner==='draw' ? 'Draw' : (data.winner==='white'?'White':'Black')+' won'} — ${data.winReason}\n\n`;
-      revealForCopy(header + data.log.join('\n'), e.target);
-    } catch(err){ /* corrupted saved data - nothing to do */ }
-  });
-})();
+  try{
+    const data = JSON.parse(saved);
+    const header = `${data.winner==='draw' ? 'Draw' : (data.winner==='white'?'White':'Black')+' won'} — ${data.winReason}\n\n`;
+    revealForCopy(header + data.log.join('\n'), e.target);
+  } catch(err){ /* corrupted saved data - nothing to do */ }
+});
+refreshLastGameBanner();
 
 // ---------- How to Play guide ----------
 const HOWTO_CONTENT = {
