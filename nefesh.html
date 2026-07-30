@@ -1155,16 +1155,14 @@ function renderBoard(){
   infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+INF_R+16, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill:'var(--gold-bright)'})).textContent='INF';
   svg.appendChild(infG);
 
-  // Direction-of-travel arrows: each loop gets 4 "signpost" arrows spaced
-  // evenly around its hollow center, hugging the inside of the checkered
-  // ring, alternating black/white as you go around (echoing the board's own
-  // checker pattern). Every loop hosts both colors (just at different points
-  // in each color's lap, moving opposite ways), so both are shown on both
-  // loops - this just repeats each color's arrow at more points along the
-  // path so the direction reads clearly no matter where you're looking.
+  // Direction-of-travel arrows: each loop gets 4 short "signpost" arrows,
+  // clustered in pairs at the top and bottom of the loop (not the sides),
+  // hugging the inside of the checkered ring, alternating black/white within
+  // each cluster. Every loop hosts both colors (just at different points in
+  // each color's lap, moving opposite ways), so both are shown on both loops.
   const arrowRadius = LOOP_R_IN*0.92;
-  const arrowHalfSpan = 0.3;
-  const SIGNPOST_ANGLES = [270, 0, 90, 180].map(deg=>deg*Math.PI/180); // N, E, S, W
+  const arrowHalfSpan = 0.16;
+  const SIGNPOST_ANGLES = [270-22, 270+22, 90-22, 90+22].map(deg=>deg*Math.PI/180); // top pair, bottom pair
   [
     {side:'left', cx:Lx, cy:Ly},
     {side:'right', cx:Rx, cy:Ry},
