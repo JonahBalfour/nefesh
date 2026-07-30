@@ -1108,6 +1108,7 @@ function renderBoard(){
     infG.appendChild(winRing);
   }
   infG.appendChild(diagonalGuideline(INFINITE_PT.x, INFINITE_PT.y, INF_R*0.78));
+  infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+10, 'text-anchor':'middle', 'font-size':28, 'font-weight':'700', fill:'var(--gold-bright)', 'pointer-events':'none'})).textContent='∞';
   infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+INF_R+16, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill:'var(--gold-bright)'})).textContent='INF';
   svg.appendChild(infG);
 
