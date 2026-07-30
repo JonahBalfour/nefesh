@@ -414,11 +414,13 @@ function visualMaster(idx){
 // Display-only label - the raw 0-35 index above is what the game logic
 // actually uses (pathToMaster, occupantsAtMaster, etc.) and stays untouched.
 // This just gives the player a more readable name: which zone a space is in
-// (Left loop / Hub / Right loop) plus its position within that zone.
+// (loop A / hub C / loop B) plus its position within that zone. Uses A/B/C
+// rather than Left/Right since the board can be flipped - "left loop" would
+// stop meaning left once the view turns around.
 function displayLabel(idx){
-  if(idx>=0 && idx<=15) return 'L'+(16-idx);
-  if(idx>=16 && idx<=19) return 'H'+(idx-15);
-  if(idx>=20 && idx<=35) return 'R'+(36-idx);
+  if(idx>=0 && idx<=15) return 'A'+(16-idx);
+  if(idx>=16 && idx<=19) return 'C'+(idx-15);
+  if(idx>=20 && idx<=35) return 'B'+(36-idx);
   return String(idx);
 }
 
@@ -1006,7 +1008,7 @@ function renderBoard(){
       const dotColor = sp.isStart==='white' ? '#f4ecd8' : '#141110';
       g.appendChild(el('circle',{cx:vis.x, cy:vis.y, r:7, fill:dotColor, stroke:'#8a7757','stroke-width':1.2}));
     }
-    // space label: zone (Left loop / Hub / Right loop) + position within it
+    // space label: zone (loop A / hub C / loop B) + position within it
     const labelDark = fill==='#e9dcc0';
     const labelY = (isHub && sp.isStart) ? vis.y+15 : vis.y+4;
     const numLabel = el('text',{x:vis.x, y:labelY, 'text-anchor':'middle', 'font-size':10, 'font-weight':'700', fill: labelDark?'#181410':'#e9dcc0', 'pointer-events':'none'});
