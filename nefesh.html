@@ -1048,8 +1048,14 @@ function renderBoard(){
     infG.appendChild(winRing);
   }
   const arrowHalfLen = INF_R*0.78;
-  infG.appendChild(splitDoubleArrow(INFINITE_PT.x, INFINITE_PT.y, 225*Math.PI/180, arrowHalfLen)); // 16 <-> 18
-  infG.appendChild(splitDoubleArrow(INFINITE_PT.x, INFINITE_PT.y, 315*Math.PI/180, arrowHalfLen)); // 17 <-> 19
+  // Each arrow's black tip points toward whichever quadrant is currently
+  // light. Flipping the board swaps which quadrants are light/dark (the
+  // same top<->bottom swap that made the seating fix necessary earlier), so
+  // the black tip has to swap to the opposite end too, or it'd point at a
+  // now-dark quadrant instead.
+  const arrowFlip = isBoardFlipped() ? Math.PI : 0;
+  infG.appendChild(splitDoubleArrow(INFINITE_PT.x, INFINITE_PT.y, 225*Math.PI/180 + arrowFlip, arrowHalfLen)); // 16 <-> 18
+  infG.appendChild(splitDoubleArrow(INFINITE_PT.x, INFINITE_PT.y, 315*Math.PI/180 + arrowFlip, arrowHalfLen)); // 17 <-> 19
   infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+INF_R+16, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill:'var(--gold-bright)'})).textContent='INF';
   svg.appendChild(infG);
 
