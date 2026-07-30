@@ -209,24 +209,12 @@
   <div class="control-panel">
 
     <div class="panel-box">
-      <div class="panel-title">OPPONENT</div>
-      <div style="display:flex; flex-direction:column; gap:6px; font-size:13px;">
-        <label><input type="radio" name="opponent-mode" value="pvp" checked> Two players (pass &amp; play)</label>
-        <label><input type="radio" name="opponent-mode" value="bot-black"> Play as White vs Computer</label>
-        <label><input type="radio" name="opponent-mode" value="bot-white"> Play as Black vs Computer</label>
-      </div>
+      <div class="panel-title">MATCH</div>
+      <div id="match-summary" style="font-size:13px; margin-bottom:10px;"></div>
+      <button id="new-game-btn" style="padding:7px 16px; font-size:12px;">New Game…</button>
       <div id="flip-board-row" style="margin-top:10px;">
         <button id="flip-board-btn" style="padding:6px 14px; font-size:12px;">Flip Board</button>
         <span style="font-size:11px; color:var(--parchment-dim); margin-left:8px;">Turn the board for the other player</span>
-      </div>
-      <div id="opponent-picker" style="display:none; margin-top:10px;">
-        <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Play style:</div>
-        <select id="opponent-persona-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
-        <div id="opponent-persona-blurb" style="font-size:11px; color:var(--parchment-dim); margin-top:6px; margin-bottom:12px; font-style:italic;"></div>
-
-        <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Difficulty:</div>
-        <select id="opponent-difficulty-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
-        <div id="opponent-difficulty-blurb" style="font-size:11px; color:var(--parchment-dim); margin-top:6px; font-style:italic;"></div>
       </div>
       <div id="bot-thinking" style="font-size:12px; color:var(--gold); margin-top:8px; display:none;">Computer is thinking…</div>
     </div>
@@ -301,6 +289,30 @@
     <h2 id="win-title">White wins</h2>
     <p id="win-reason"></p>
     <button id="reset-btn">New game</button>
+  </div>
+</div>
+
+<div class="overlay" id="setup-overlay">
+  <div class="overlay-box" style="max-width:420px; text-align:left; padding:26px 30px;">
+    <div class="row" style="align-items:flex-start; margin-bottom:14px;">
+      <h2 style="margin:0;">New Game</h2>
+      <button id="setup-close-btn" style="padding:5px 12px; font-size:12px;">Close</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:6px; font-size:13px; margin-bottom:14px;">
+      <label><input type="radio" name="setup-mode" value="pvp" checked> Two players (pass &amp; play)</label>
+      <label><input type="radio" name="setup-mode" value="bot-black"> Play as White vs Computer</label>
+      <label><input type="radio" name="setup-mode" value="bot-white"> Play as Black vs Computer</label>
+    </div>
+    <div id="setup-picker" style="display:none; margin-bottom:14px;">
+      <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Play style:</div>
+      <select id="setup-persona-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
+      <div id="setup-persona-blurb" style="font-size:11px; color:var(--parchment-dim); margin-top:6px; margin-bottom:12px; font-style:italic;"></div>
+
+      <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Difficulty:</div>
+      <select id="setup-difficulty-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
+      <div id="setup-difficulty-blurb" style="font-size:11px; color:var(--parchment-dim); margin-top:6px; font-style:italic;"></div>
+    </div>
+    <button id="setup-start-btn" style="width:100%; padding:10px; font-size:14px;">Start Game</button>
   </div>
 </div>
 
@@ -1323,6 +1335,7 @@ function renderBench(color){
 }
 
 function renderControls(){
+  updateMatchSummary();
   document.getElementById('round-num').textContent = state.round;
   const mover = currentMover();
   const pill = document.getElementById('acting-pill');
@@ -1372,11 +1385,6 @@ document.getElementById('pass-btn').addEventListener('click', ()=>{
   finishAction(mover);
 });
 
-document.getElementById('reset-btn').addEventListener('click', ()=>{
-  resetState();
-  render();
-});
-
 function populateOptionList(selectId, items, currentId){
   const select = document.getElementById(selectId);
   select.innerHTML = '';
@@ -1388,47 +1396,78 @@ function populateOptionList(selectId, items, currentId){
   });
   select.value = currentId;
 }
-function updatePersonaBlurb(){
-  document.getElementById('opponent-persona-blurb').textContent = botPersona.blurb;
-}
-function updateDifficultyBlurb(){
-  document.getElementById('opponent-difficulty-blurb').textContent = botDifficulty.blurb;
-}
-populateOptionList('opponent-persona-select', PERSONAS, botPersona.id);
-populateOptionList('opponent-difficulty-select', DIFFICULTIES, botDifficulty.id);
-updatePersonaBlurb();
-updateDifficultyBlurb();
 
-document.getElementById('opponent-persona-select').addEventListener('change', (e)=>{
-  botPersona = PERSONAS.find(p=>p.id===e.target.value) || botPersona;
-  updatePersonaBlurb();
+// ---------- new-game setup overlay ----------
+// Browsing these options never touches the live game - nothing takes effect
+// until "Start Game" is clicked, so opening this just to look around can't
+// accidentally reset a match in progress.
+function updateSetupPersonaBlurb(){
+  const p = PERSONAS.find(p=>p.id===document.getElementById('setup-persona-select').value);
+  document.getElementById('setup-persona-blurb').textContent = p ? p.blurb : '';
+}
+function updateSetupDifficultyBlurb(){
+  const d = DIFFICULTIES.find(d=>d.id===document.getElementById('setup-difficulty-select').value);
+  document.getElementById('setup-difficulty-blurb').textContent = d ? d.blurb : '';
+}
+function currentModeValue(){
+  return botColor==='black' ? 'bot-black' : (botColor==='white' ? 'bot-white' : 'pvp');
+}
+function openSetupOverlay(){
+  document.querySelectorAll('input[name="setup-mode"]').forEach(radio=>{
+    radio.checked = (radio.value === currentModeValue());
+  });
+  populateOptionList('setup-persona-select', PERSONAS, botPersona.id);
+  populateOptionList('setup-difficulty-select', DIFFICULTIES, botDifficulty.id);
+  updateSetupPersonaBlurb();
+  updateSetupDifficultyBlurb();
+  document.getElementById('setup-picker').style.display = botColor ? 'block' : 'none';
+  document.getElementById('setup-overlay').classList.add('show');
+}
+function closeSetupOverlay(){
+  document.getElementById('setup-overlay').classList.remove('show');
+}
+function updateMatchSummary(){
+  const summary = document.getElementById('match-summary');
+  if(!botColor){
+    summary.textContent = 'Two players (pass & play)';
+  } else {
+    const humanColor = botColor==='white' ? 'black' : 'white';
+    summary.textContent = `Playing ${humanColor==='white'?'White':'Black'} vs ${botPersona.name} (${botDifficulty.name})`;
+  }
+}
+
+document.getElementById('new-game-btn').addEventListener('click', openSetupOverlay);
+document.getElementById('setup-close-btn').addEventListener('click', closeSetupOverlay);
+document.getElementById('reset-btn').addEventListener('click', openSetupOverlay);
+
+document.querySelectorAll('input[name="setup-mode"]').forEach(radio=>{
+  radio.addEventListener('change', (e)=>{
+    const isBot = e.target.value !== 'pvp';
+    document.getElementById('setup-picker').style.display = isBot ? 'block' : 'none';
+  });
+});
+document.getElementById('setup-persona-select').addEventListener('change', updateSetupPersonaBlurb);
+document.getElementById('setup-difficulty-select').addEventListener('change', updateSetupDifficultyBlurb);
+
+document.getElementById('setup-start-btn').addEventListener('click', ()=>{
+  const mode = document.querySelector('input[name="setup-mode"]:checked').value;
+  botColor = mode==='bot-black' ? 'black' : (mode==='bot-white' ? 'white' : null);
+  if(botColor){
+    botPersona = PERSONAS.find(p=>p.id===document.getElementById('setup-persona-select').value) || botPersona;
+    botDifficulty = DIFFICULTIES.find(d=>d.id===document.getElementById('setup-difficulty-select').value) || botDifficulty;
+  }
+  document.getElementById('flip-board-row').style.display = botColor ? 'none' : 'block';
+  manualBoardFlip = false; // reset the manual toggle whenever a new match starts
   syncBotProfile();
   resetState();
-  render();
-});
-document.getElementById('opponent-difficulty-select').addEventListener('change', (e)=>{
-  botDifficulty = DIFFICULTIES.find(d=>d.id===e.target.value) || botDifficulty;
-  updateDifficultyBlurb();
-  resetState();
+  updateMatchSummary();
+  closeSetupOverlay();
   render();
 });
 
 document.getElementById('flip-board-btn').addEventListener('click', ()=>{
   manualBoardFlip = !manualBoardFlip;
   render();
-});
-
-document.querySelectorAll('input[name="opponent-mode"]').forEach(radio=>{
-  radio.addEventListener('change', (e)=>{
-    const v = e.target.value;
-    botColor = v==='bot-black' ? 'black' : (v==='bot-white' ? 'white' : null);
-    document.getElementById('opponent-picker').style.display = botColor ? 'block' : 'none';
-    document.getElementById('flip-board-row').style.display = botColor ? 'none' : 'block';
-    manualBoardFlip = false; // reset the manual toggle when leaving pass-and-play
-    syncBotProfile();
-    resetState();
-    render();
-  });
 });
 
 // ---------- copy-log helpers ----------
@@ -1564,6 +1603,7 @@ document.getElementById('howto-close-btn').addEventListener('click', ()=>{
 });
 
 render();
+openSetupOverlay(); // greet the player with the setup screen before their first game
 
 // Offline install support - no-ops harmlessly on file:// or plain http, since
 // service workers require a secure origin (https, or a real local server).
