@@ -411,6 +411,17 @@ function visualMaster(idx){
   return isBoardFlipped() ? MASTER[FLIP_MAP[idx]] : MASTER[idx];
 }
 
+// Display-only label - the raw 0-35 index above is what the game logic
+// actually uses (pathToMaster, occupantsAtMaster, etc.) and stays untouched.
+// This just gives the player a more readable name: which zone a space is in
+// (Left loop / Hub / Right loop) plus its position within that zone.
+function displayLabel(idx){
+  if(idx>=0 && idx<=15) return 'L'+(idx+1);
+  if(idx>=16 && idx<=19) return 'H'+(idx-15);
+  if(idx>=20 && idx<=35) return 'R'+(idx-19);
+  return String(idx);
+}
+
 
 
 // The confirmed path: Black's one full circuit, in order. The hub isn't a simple ring —
@@ -995,11 +1006,11 @@ function renderBoard(){
       const dotColor = sp.isStart==='white' ? '#f4ecd8' : '#141110';
       g.appendChild(el('circle',{cx:vis.x, cy:vis.y, r:7, fill:dotColor, stroke:'#8a7757','stroke-width':1.2}));
     }
-    // number label (matches this space's internal ID, for giving feedback)
+    // space label: zone (Left loop / Hub / Right loop) + position within it
     const labelDark = fill==='#e9dcc0';
     const labelY = (isHub && sp.isStart) ? vis.y+15 : vis.y+4;
-    const numLabel = el('text',{x:vis.x, y:labelY, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill: labelDark?'#181410':'#e9dcc0', 'pointer-events':'none'});
-    numLabel.textContent = sp.idx;
+    const numLabel = el('text',{x:vis.x, y:labelY, 'text-anchor':'middle', 'font-size':10, 'font-weight':'700', fill: labelDark?'#181410':'#e9dcc0', 'pointer-events':'none'});
+    numLabel.textContent = displayLabel(sp.idx);
     g.appendChild(numLabel);
     if(legalTargets[sp.idx]){
       const ringAttrs = {d:vis.path, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3};
