@@ -187,9 +187,13 @@
         <label><input type="radio" name="opponent-mode" value="bot-white"> Play as Black vs Computer</label>
       </div>
       <div id="opponent-picker" style="display:none; margin-top:10px;">
-        <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Choose your opponent:</div>
-        <select id="opponent-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
-        <div id="opponent-blurb" style="font-size:11px; color:var(--parchment-dim); margin-top:6px; font-style:italic;"></div>
+        <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Play style:</div>
+        <select id="opponent-persona-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
+        <div id="opponent-persona-blurb" style="font-size:11px; color:var(--parchment-dim); margin-top:6px; margin-bottom:12px; font-style:italic;"></div>
+
+        <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Difficulty:</div>
+        <select id="opponent-difficulty-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
+        <div id="opponent-difficulty-blurb" style="font-size:11px; color:var(--parchment-dim); margin-top:6px; font-style:italic;"></div>
       </div>
       <div id="bot-thinking" style="font-size:12px; color:var(--gold); margin-top:8px; display:none;">Computer is thinking…</div>
     </div>
@@ -604,37 +608,61 @@ function finishAction(color){
 }
 
 // ---------- computer opponent ----------
-// Two independent knobs, both validated in nefesh-sim.js before landing here:
-// difficulty (how far ahead it searches) and persona (which style weights it
-// scores moves with). Each named character below is a fixed combination of
-// the two - character identities/lore can be layered on later.
+// Two fully independent knobs, both validated in nefesh-sim.js: PLAY STYLE
+// (which goals it weighs - the persona) and DIFFICULTY (how well it pursues
+// that style - how far ahead it searches). Any style can be paired with any
+// difficulty. Character identities/lore for the personas can be layered on
+// later - these are functional placeholders.
 const PIECE_VALUE = { soul: 100000, body: 80, mind: 20, will: 25, elf: 30, man: 22, dwarf: 16, creature: 10 };
 
+// raceWeight/personWeight: how much to prefer advancing/placing pieces of that
+// category over the other. bodyHunt: extra multiplier specifically on
+// capturing the opponent's Body. ownBodyGuard: extra multiplier specifically
+// penalizing self-capturing its OWN Body. selfSacrifice: deliberately
+// self-captures its own Body once its Soul is out and moving, to unlock its
+// own Infinite run early.
+const DEFAULT_AXES = {raceWeight:1.0, personWeight:1.0, bodyHunt:1.0, ownBodyGuard:1.0, selfSacrifice:false};
 const SCORE_PROFILES = {
-  balanced:   {capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0}, // the original single-persona bot
-  aggressive: {capture:1.6, selfCapture:0.5, progress:0.8, soulUrgency:0.8}, // chases captures, shrugs off risk
-  defensive:  {capture:0.7, selfCapture:2.2, progress:0.9, soulUrgency:1.0}, // very reluctant to expose any piece
-  racer:      {capture:0.5, selfCapture:1.0, progress:1.6, soulUrgency:2.5}, // undervalues captures, rushes the Soul out
+  balanced:   {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0},
+  aggressive: {...DEFAULT_AXES, capture:1.6, selfCapture:0.5, progress:0.8, soulUrgency:0.8},
+  defensive:  {...DEFAULT_AXES, capture:0.7, selfCapture:2.2, progress:0.9, soulUrgency:1.0},
+  racer:      {...DEFAULT_AXES, capture:0.5, selfCapture:1.0, progress:1.6, soulUrgency:2.5},
+  vanguard:   {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0, raceWeight:1.8, personWeight:0.4},
+  herald:     {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0, raceWeight:0.4, personWeight:1.8},
+  assassin:   {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0, bodyHunt:2.5},
+  guardian:   {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.0, ownBodyGuard:3.0},
+  zealot:     {...DEFAULT_AXES, capture:1.0, selfCapture:1.0, progress:1.0, soulUrgency:1.2, selfSacrifice:true},
+  turtle:     {...DEFAULT_AXES, capture:0.3, selfCapture:3.0, progress:0.3, soulUrgency:0.3},
 };
 
-const BOT_ROSTER = [
-  {id:'drifter',    name:'Drifter',    difficulty:'Easy',   strategy:'random',    profile:'balanced',   blurb:'Moves on a whim — no real strategy. Good for a first game.'},
-  {id:'gunslinger', name:'Gunslinger', difficulty:'Normal', strategy:'greedy',    profile:'aggressive', blurb:'Chases every capture it can find, and takes risks doing it.'},
-  {id:'watchman',   name:'Watchman',   difficulty:'Normal', strategy:'greedy',    profile:'defensive',  blurb:'Cautious — very reluctant to expose any of its pieces.'},
-  {id:'pilgrim',    name:'Pilgrim',    difficulty:'Normal', strategy:'greedy',    profile:'racer',      blurb:'Undervalues captures — rushes its Soul toward the Infinite.'},
-  {id:'ranger',     name:'Ranger',     difficulty:'Normal', strategy:'greedy',    profile:'balanced',   blurb:'A steady, all-around player.'},
-  {id:'marshal',    name:'Marshal',    difficulty:'Hard',   strategy:'lookahead', profile:'balanced',   blurb:'Thinks a move ahead before committing — the toughest challenge.'},
+const PERSONAS = [
+  {id:'balanced',   name:'Ranger',     blurb:'A steady, all-around player.'},
+  {id:'aggressive', name:'Gunslinger', blurb:'Chases every capture it can find, and takes risks doing it.'},
+  {id:'defensive',  name:'Watchman',   blurb:'Cautious — reluctant to expose any of its pieces.'},
+  {id:'racer',      name:'Pilgrim',    blurb:'Undervalues captures — rushes its Soul toward the Infinite.'},
+  {id:'vanguard',   name:'Vanguard',   blurb:'Pushes its Race pieces (Creature/Dwarf/Man/Elf) hard, slow to bring its Person pieces out.'},
+  {id:'herald',     name:'Herald',     blurb:'Rushes its Person pieces (Mind/Will/Body/Soul) out fast, neglects its Race pieces.'},
+  {id:'assassin',   name:'Assassin',   blurb:'Fixates on reaching your Body specifically, more than any other capture.'},
+  {id:'guardian',   name:'Guardian',   blurb:'Goes far out of its way to keep its own Body safe.'},
+  {id:'zealot',     name:'Zealot',     blurb:'Sacrifices its own Body on purpose once its Soul is moving, to free its own path to the Infinite early.'},
+  {id:'turtle',     name:'Turtle',     blurb:"Avoids nearly all risk - takes a clear win when it sees one, but won't chase a risky capture."},
 ];
-let botOpponent = BOT_ROSTER.find(b=>b.id==='ranger');
+const DIFFICULTIES = [
+  {id:'easy',   name:'Easy',   strategy:'random',    blurb:'Moves at random - play style has no effect at this level.'},
+  {id:'normal', name:'Normal', strategy:'greedy',    blurb:'Reacts to the board, one move at a time.'},
+  {id:'hard',   name:'Hard',   strategy:'lookahead', blurb:'Plans a move ahead before committing - the toughest challenge.'},
+];
+let botPersona = PERSONAS.find(p=>p.id==='balanced');
+let botDifficulty = DIFFICULTIES.find(d=>d.id==='normal');
 
-// BOT_PROFILE[botColor] is the chosen character's style; the human's color is
+// BOT_PROFILE[botColor] is the chosen persona's style; the human's color is
 // always scored as 'balanced' when the bot predicts their reply during
 // lookahead - a neutral guess, not an assumption about how you'll actually play.
 let BOT_PROFILE = {white:'balanced', black:'balanced'};
 function syncBotProfile(){
   if(!botColor){ BOT_PROFILE = {white:'balanced', black:'balanced'}; return; }
   const humanColor = botColor==='white' ? 'black' : 'white';
-  BOT_PROFILE = {[botColor]: botOpponent.profile, [humanColor]: 'balanced'};
+  BOT_PROFILE = {[botColor]: botPersona.id, [humanColor]: 'balanced'};
 }
 
 function scoreOption(color, opt){
@@ -642,37 +670,50 @@ function scoreOption(color, opt){
   const profile = SCORE_PROFILES[BOT_PROFILE[color]] || SCORE_PROFILES.balanced;
 
   if(opt.type==='place'){
+    // placement is always a Person piece under the current rules (Race pieces
+    // start onboard already), so personWeight is the relevant lever here.
     const startMaster = START_MASTER[color];
     const occ = occupantsAtMaster(startMaster).filter(o=>o.color===color);
     const hitsOwnSoul = occ.some(o=>o.pieceId==='soul');
     const hitsOwnOther = occ.some(o=>o.pieceId!=='soul');
     if(hitsOwnSoul) score -= 100000; // never place on top of your own unmoved Soul
     else if(hitsOwnOther) score -= 15; // wastes a piece, mildly bad
-    else score += 6; // otherwise, getting pieces onto the board is good
+    else score += 6 * profile.personWeight; // otherwise, getting pieces onto the board is good
     return score;
   }
 
   const move = opt.move;
   const pieceId = opt.pieceId;
+  const def = getDef(pieceId);
   const p = state.pieces[color][pieceId];
+  const categoryWeight = def.category==='race' ? profile.raceWeight : profile.personWeight;
 
   if(move.kind==='soul-win') return score + 1000000; // immediate win
   if(move.kind==='soul-overshoot-capture') return score - 200000; // self-destructs own Soul
   if(move.kind==='self-lap-capture') return score - 40; // loses this piece for nothing
 
   // kind === 'normal'
-  score += Math.abs(move.delta) * 0.5 * profile.progress; // preference for making real progress
+  score += Math.abs(move.delta) * 0.5 * profile.progress * categoryWeight; // preference for making real progress, biased by category
   move.occ.forEach(o=>{
     if(o.color===color){
-      score -= (o.pieceId==='soul') ? 200000 : 15*profile.selfCapture; // own-Soul safety is never a style choice
+      if(o.pieceId==='soul') score -= 200000; // own-Soul safety is never a style choice
+      else if(o.pieceId==='body' && profile.selfSacrifice && isSoulOutAndMoving(color)) score += 45; // deliberately unlock our own Soul's path to the Infinite
+      else if(o.pieceId==='body') score -= 15 * profile.selfCapture * profile.ownBodyGuard; // extra-cautious about its own Body specifically
+      else score -= 15 * profile.selfCapture;
     } else if(o.pieceId==='soul'){
       score += 100000; // capturing the enemy Soul always wins - never a style choice
+    } else if(o.pieceId==='body'){
+      score += 70 * profile.capture * profile.bodyHunt; // extra fixation on the opponent's Body specifically
     } else {
-      score += (o.pieceId==='body' ? 70 : (PIECE_VALUE[o.pieceId]||20)) * profile.capture;
+      score += (PIECE_VALUE[o.pieceId]||20) * profile.capture;
     }
   });
   if(pieceId==='soul' && p.progress===0) score += 500 * profile.soulUrgency; // urgency: get the Soul moving
   return score;
+}
+function isSoulOutAndMoving(color){
+  const soul = state.pieces[color].soul;
+  return soul.status==='onboard' && soul.progress >= 8 && !state.bodyCaptured[color];
 }
 
 function collectBotOptions(color){
@@ -726,10 +767,13 @@ function evaluateBoard(s, color){
   let score = 0;
   PIECE_DEFS.forEach(d=>{
     const val = PIECE_VALUE[d.id] || 20;
+    const categoryWeight = d.category==='race' ? profile.raceWeight : profile.personWeight;
     const mine = s.pieces[color][d.id];
     const theirs = s.pieces[oppColor][d.id];
-    if(mine.status!=='captured') score += val*profile.selfCapture + (mine.status==='onboard' ? mine.progress*0.3*profile.progress : 0);
-    if(theirs.status!=='captured') score -= val*profile.capture + (theirs.status==='onboard' ? theirs.progress*0.3 : 0);
+    const ownGuard = d.id==='body' ? profile.ownBodyGuard : 1;
+    const oppHunt = d.id==='body' ? profile.bodyHunt : 1;
+    if(mine.status!=='captured') score += val*profile.selfCapture*ownGuard + (mine.status==='onboard' ? mine.progress*0.3*profile.progress*categoryWeight : 0);
+    if(theirs.status!=='captured') score -= val*profile.capture*oppHunt + (theirs.status==='onboard' ? theirs.progress*0.3 : 0);
   });
   const mySoul = s.pieces[color].soul;
   if(mySoul.status==='onboard'){
@@ -773,8 +817,8 @@ function pickLookahead(color, options){
 function pickBotAction(color){
   const options = collectBotOptions(color);
   if(options.length===0) return null;
-  if(botOpponent.strategy==='random') return pickRandomOption(options);
-  if(botOpponent.strategy==='lookahead') return pickLookahead(color, options);
+  if(botDifficulty.strategy==='random') return pickRandomOption(options);
+  if(botDifficulty.strategy==='lookahead') return pickLookahead(color, options);
   return bestScored(color, options);
 }
 
@@ -783,7 +827,7 @@ function maybeBotTurn(){
   const mover = currentMover();
   if(mover !== botColor || botBusy) return;
   botBusy = true;
-  document.getElementById('bot-thinking').textContent = `${botOpponent.name} is thinking…`;
+  document.getElementById('bot-thinking').textContent = `${botPersona.name} (${botDifficulty.name}) is thinking…`;
   document.getElementById('bot-thinking').style.display = 'block';
   setTimeout(()=>{
     botBusy = false;
@@ -799,7 +843,7 @@ function maybeBotTurn(){
     }
     const choice = pickBotAction(botColor);
     if(!choice){
-      log(`${botOpponent.name} has no legal action and passes.`);
+      log(`${botPersona.name} (${botDifficulty.name}) has no legal action and passes.`);
       finishAction(botColor);
       return;
     }
@@ -1010,7 +1054,7 @@ function renderControls(){
     pill.textContent = 'Game over';
     pill.className='pill black';
   } else if(mover){
-    pill.textContent = (mover==='white'?'White':'Black') + (mover===botColor ? ` (${botOpponent.name})` : '');
+    pill.textContent = (mover==='white'?'White':'Black') + (mover===botColor ? ` (${botPersona.name} · ${botDifficulty.name})` : '');
     pill.className = 'pill '+mover;
   }
   document.getElementById('die1').textContent = state.dice? state.dice.d1 : '–';
@@ -1056,32 +1100,38 @@ document.getElementById('reset-btn').addEventListener('click', ()=>{
   render();
 });
 
-function populateOpponentSelect(){
-  const select = document.getElementById('opponent-select');
+function populateOptionList(selectId, items, currentId){
+  const select = document.getElementById(selectId);
   select.innerHTML = '';
-  ['Easy','Normal','Hard'].forEach(diff=>{
-    const group = document.createElement('optgroup');
-    group.label = diff;
-    BOT_ROSTER.filter(b=>b.difficulty===diff).forEach(b=>{
-      const opt = document.createElement('option');
-      opt.value = b.id;
-      opt.textContent = b.name;
-      group.appendChild(opt);
-    });
-    select.appendChild(group);
+  items.forEach(item=>{
+    const opt = document.createElement('option');
+    opt.value = item.id;
+    opt.textContent = item.name;
+    select.appendChild(opt);
   });
-  select.value = botOpponent.id;
+  select.value = currentId;
 }
-function updateOpponentBlurb(){
-  document.getElementById('opponent-blurb').textContent = `${botOpponent.difficulty} — ${botOpponent.blurb}`;
+function updatePersonaBlurb(){
+  document.getElementById('opponent-persona-blurb').textContent = botPersona.blurb;
 }
-populateOpponentSelect();
-updateOpponentBlurb();
+function updateDifficultyBlurb(){
+  document.getElementById('opponent-difficulty-blurb').textContent = botDifficulty.blurb;
+}
+populateOptionList('opponent-persona-select', PERSONAS, botPersona.id);
+populateOptionList('opponent-difficulty-select', DIFFICULTIES, botDifficulty.id);
+updatePersonaBlurb();
+updateDifficultyBlurb();
 
-document.getElementById('opponent-select').addEventListener('change', (e)=>{
-  botOpponent = BOT_ROSTER.find(b=>b.id===e.target.value) || botOpponent;
-  updateOpponentBlurb();
+document.getElementById('opponent-persona-select').addEventListener('change', (e)=>{
+  botPersona = PERSONAS.find(p=>p.id===e.target.value) || botPersona;
+  updatePersonaBlurb();
   syncBotProfile();
+  resetState();
+  render();
+});
+document.getElementById('opponent-difficulty-select').addEventListener('change', (e)=>{
+  botDifficulty = DIFFICULTIES.find(d=>d.id===e.target.value) || botDifficulty;
+  updateDifficultyBlurb();
   resetState();
   render();
 });
