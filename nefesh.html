@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Nefesh — Prototype Board</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#221712">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nefesh">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rye&family=Spectral:ital,wght@0,400;0,600;1,400&family=Spectral+SC:wght@600&display=swap" rel="stylesheet">
 <style>
@@ -172,6 +180,16 @@
   #howto-content ul{margin:0 0 12px; padding-left:20px;}
   #howto-content li{margin-bottom:8px;}
   #howto-content b{color:var(--gold-bright);}
+
+  @media (max-width: 700px){
+    body{ padding:12px; }
+    h1.title{ font-size:28px; letter-spacing:2px; }
+    .subtitle{ font-size:12px; margin-bottom:14px; }
+    .app{ flex-direction:column; gap:14px; }
+    .board-panel{ min-width:0; flex-basis:auto; width:100%; padding:8px; }
+    .control-panel{ min-width:0; flex-basis:auto; width:100%; }
+    .overlay-box{ max-width:calc(100vw - 32px); padding:24px 20px; }
+  }
 </style>
 </head>
 <body>
@@ -435,6 +453,41 @@ function pathToMaster(color, progress){
   const p = ((progress % TRACK_LEN)+TRACK_LEN)%TRACK_LEN;
   if(color==='black') return PATH_ORDER[p];
   return PATH_ORDER[((TRACK_LEN-1-p)%TRACK_LEN+TRACK_LEN)%TRACK_LEN];
+}
+
+// ---------- sound ----------
+// Small synthesized dice-clatter (a few short filtered noise bursts) so we
+// don't need any sound asset files - just the Web Audio API.
+let audioCtx = null;
+function getAudioCtx(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
+    catch(e){ return null; }
+  }
+  return audioCtx;
+}
+function playDiceSound(){
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  if(ctx.state==='suspended') ctx.resume();
+  const now = ctx.currentTime;
+  [0, 0.08, 0.15].forEach((offset, i)=>{
+    const dur = 0.07;
+    const bufferSize = Math.floor(ctx.sampleRate*dur);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let j=0;j<bufferSize;j++){ data[j] = (Math.random()*2-1) * Math.pow(1-j/bufferSize, 2); }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1400 - i*220 + Math.random()*300;
+    filter.Q.value = 1.1;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.45 - i*0.11;
+    src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    src.start(now+offset);
+  });
 }
 
 // ---------- state ----------
@@ -907,6 +960,7 @@ function maybeBotTurn(){
       const d1 = 1+Math.floor(Math.random()*6);
       const d2 = 1+Math.floor(Math.random()*6);
       state.dice = {d1,d2};
+      playDiceSound();
       log(`Round ${state.round}: dice rolled — ${d1} and ${d2}.`);
       render();
       return;
@@ -931,6 +985,10 @@ function el(tag,attrs){
 }
 
 let simulatingLookahead = false; // true while the bot is exploring hypothetical moves on a cloned state - render() is a no-op then, so the real board never flickers through fake positions
+
+// Last known screen position per piece (keyed "color-pieceId"), used to FLIP-animate
+// pieces sliding to their new spot instead of popping there on every re-render.
+let piecePositions = {};
 
 function render(){
   if(simulatingLookahead) return;
@@ -1183,6 +1241,7 @@ function renderBoard(){
   });
 
   // pieces
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   ['white','black'].forEach(color=>{
     PIECE_DEFS.forEach(def=>{
       const p = state.pieces[color][def.id];
@@ -1207,6 +1266,22 @@ function renderBoard(){
         render();
       });
       svg.appendChild(g);
+
+      // FLIP-animate: if this piece was somewhere else last render, slide it
+      // from there to here instead of just popping into the new spot.
+      const key = color+'-'+def.id;
+      const prevPt = piecePositions[key];
+      piecePositions[key] = pt;
+      if(prevPt && !prefersReducedMotion && (prevPt.x!==pt.x || prevPt.y!==pt.y)){
+        g.style.transition = 'none';
+        g.style.transform = `translate(${prevPt.x-pt.x}px, ${prevPt.y-pt.y}px)`;
+        requestAnimationFrame(()=>{
+          requestAnimationFrame(()=>{
+            g.style.transition = 'transform 380ms cubic-bezier(.4,0,.2,1)';
+            g.style.transform = 'translate(0,0)';
+          });
+        });
+      }
     });
   });
 }
@@ -1285,6 +1360,7 @@ document.getElementById('roll-btn').addEventListener('click', ()=>{
   const d1 = 1+Math.floor(Math.random()*6);
   const d2 = 1+Math.floor(Math.random()*6);
   state.dice = {d1,d2};
+  playDiceSound();
   log(`Round ${state.round}: dice rolled — ${d1} and ${d2}.`);
   render();
 });
@@ -1488,6 +1564,14 @@ document.getElementById('howto-close-btn').addEventListener('click', ()=>{
 });
 
 render();
+
+// Offline install support - no-ops harmlessly on file:// or plain http, since
+// service workers require a secure origin (https, or a real local server).
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
 </script>
 </body>
 </html>

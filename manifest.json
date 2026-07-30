@@ -1,0 +1,15 @@
+{
+  "name": "Nefesh",
+  "short_name": "Nefesh",
+  "description": "A prototype board game from a fantasy western novel — click to place, move, and capture.",
+  "start_url": "./nefesh.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#221712",
+  "theme_color": "#221712",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
