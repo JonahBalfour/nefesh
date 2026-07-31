@@ -546,6 +546,14 @@ function currentMover(){
   return null; // round complete
 }
 
+// Per the rules, the round's FIRST mover doesn't roll - the SECOND mover does
+// (rolling once, before either player has acted, and both then use that same
+// roll). This is a distinct question from "whose turn is it to act right
+// now" (currentMover), which is why it's its own function.
+function roundRoller(){
+  return state.firstMover==='white' ? 'black' : 'white';
+}
+
 function log(msg){
   state.log.unshift(msg);
   if(state.log.length>60) state.log.pop();
@@ -959,6 +967,29 @@ function pickBotAction(color){
 
 function maybeBotTurn(){
   if(!botColor || state.winner) return;
+
+  // Rolling is a separate step from acting, done by the round's designated
+  // roller (the player who moves SECOND that round) before anyone acts -
+  // so this check is independent of currentMover(), not gated behind it.
+  if(!state.dice){
+    if(roundRoller()!==botColor || botBusy) return;
+    botBusy = true;
+    document.getElementById('bot-thinking').textContent = `${botPersona.name} (${botDifficulty.name}) is rolling…`;
+    document.getElementById('bot-thinking').style.display = 'block';
+    setTimeout(()=>{
+      botBusy = false;
+      document.getElementById('bot-thinking').style.display = 'none';
+      if(state.winner || state.dice) return;
+      const d1 = 1+Math.floor(Math.random()*6);
+      const d2 = 1+Math.floor(Math.random()*6);
+      state.dice = {d1,d2};
+      playDiceSound();
+      log(`Round ${state.round}: dice rolled — ${d1} and ${d2}.`);
+      render();
+    }, 600);
+    return;
+  }
+
   const mover = currentMover();
   if(mover !== botColor || botBusy) return;
   botBusy = true;
@@ -968,15 +999,6 @@ function maybeBotTurn(){
     botBusy = false;
     document.getElementById('bot-thinking').style.display = 'none';
     if(state.winner || currentMover()!==botColor) return;
-    if(!state.dice){
-      const d1 = 1+Math.floor(Math.random()*6);
-      const d2 = 1+Math.floor(Math.random()*6);
-      state.dice = {d1,d2};
-      playDiceSound();
-      log(`Round ${state.round}: dice rolled — ${d1} and ${d2}.`);
-      render();
-      return;
-    }
     const choice = pickBotAction(botColor);
     if(!choice){
       log(`${botPersona.name} (${botDifficulty.name}) has no legal action and passes.`);
@@ -1356,8 +1378,7 @@ function renderControls(){
     : '';
 
   const rollBtn = document.getElementById('roll-btn');
-  rollBtn.disabled = !!state.dice || !!state.winner || mover===botColor;
-
+  rollBtn.disabled = !!state.dice || !!state.winner || roundRoller()===botColor;
 
   const passBtn = document.getElementById('pass-btn');
   const status = document.getElementById('turn-status');
@@ -1366,7 +1387,7 @@ function renderControls(){
     status.textContent = `${mover} has no legal placement or move.`;
   } else {
     passBtn.disabled=true;
-    status.textContent = state.dice ? '' : 'Roll to begin the round.';
+    status.textContent = state.dice ? '' : `${roundRoller()==='white'?'White':'Black'} rolls to begin the round.`;
   }
 }
 
