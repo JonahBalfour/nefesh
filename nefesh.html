@@ -1211,7 +1211,15 @@ function renderBoard(){
     numLabel.textContent = displayLabel(sp.idx);
     g.appendChild(numLabel);
     if(legalTargets[sp.idx]){
-      const ringAttrs = {d:vis.path, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3};
+      const move = legalTargets[sp.idx];
+      // A move is flagged red rather than gold if landing there removes a
+      // piece - the opponent's, or your own (self-capture, or a non-Soul
+      // piece completing a full circuit) - so a capture is never a surprise.
+      const isCapture = move.kind==='self-lap-capture' || move.kind==='soul-overshoot-capture'
+        || (move.kind==='normal' && move.occ && move.occ.length>0);
+      const ringAttrs = isCapture
+        ? {d:vis.path, fill:'rgba(138,46,31,0.32)', stroke:'var(--danger)','stroke-width':3}
+        : {d:vis.path, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3};
       const ring = el('path',ringAttrs);
       ring.classList.add('legal-move-space');
       const handler = ()=>{
