@@ -1339,6 +1339,8 @@ function renderBoard(){
 
   renderBenchTray('white');
   renderBenchTray('black');
+  renderCapturedRow('white');
+  renderCapturedRow('black');
 }
 
 function renderBench(color){
@@ -1429,6 +1431,31 @@ function renderBenchTray(color){
       placePiece(color, def.id);
     });
     g.appendChild(pg);
+  });
+  svg.appendChild(g);
+}
+
+// Captured pieces get no tray - like a real board, they're just set down off
+// to the side. They sit in the corner diagonally opposite this color's bench
+// (same half of the screen, other side), growing inward from the outer edge
+// as more accumulate instead of reserving space for a full set up front.
+function renderCapturedRow(color){
+  const capturedPieces = PIECE_DEFS.filter(d=>state.pieces[color][d.id].status==='captured');
+  if(capturedPieces.length===0) return;
+  const bottom = seatIsBottom(color);
+  const cy = benchTrayXY(color).y + BENCH_TRAY_H/2;
+  const growRight = bottom; // bench sits right when bottom, left when top - captured takes the other side
+  const r = 12, pitch = 36;
+  const startX = growRight ? (TRAY_MARGIN + r) : (840 - TRAY_MARGIN - r);
+  const fill = color==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
+  const textColor = color==='white' ? '#1C1712' : '#efe3c8';
+  const g = el('g',{});
+  capturedPieces.forEach((def,i)=>{
+    const cx = growRight ? startX + i*pitch : startX - i*pitch;
+    g.appendChild(el('circle',{cx, cy, r, fill, stroke:'#8a7757','stroke-width':1.4}));
+    const t = el('text',{x:cx, y:cy+4, 'text-anchor':'middle', 'font-size':10.5, fill:textColor, 'font-weight':'700'});
+    t.textContent = def.abbr;
+    g.appendChild(t);
   });
   svg.appendChild(g);
 }
