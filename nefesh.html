@@ -1359,32 +1359,30 @@ function renderBench(color){
   const mover = currentMover();
   PIECE_DEFS.forEach(def=>{
     const p = state.pieces[color][def.id];
-    // Bench pieces no longer get a card here - they sit in the on-board tray
-    // (see renderBenchTray) instead. This panel now only reflects onboard and
-    // captured pieces.
-    if(p.status==='bench') return;
+    // Bench pieces sit in the on-board tray (renderBenchTray) and captured
+    // pieces sit loose on the board (renderCapturedRow) - this panel now only
+    // reflects onboard pieces, since it's the one place still showing info
+    // that isn't visible on the board itself (bonus values, the Soul's
+    // special status text).
+    if(p.status!=='onboard') return;
     const btn = document.createElement('div');
-    btn.className='piece-btn';
-    if(p.status==='captured') btn.classList.add('captured');
-    if(p.status==='onboard') btn.classList.add('onboard');
+    btn.className='piece-btn onboard';
     if(state.selected && state.selected.color===color && state.selected.pieceId===def.id) btn.classList.add('selected');
     const bonusLabel = def.id==='soul' ? '∞' : ('+'+def.bonus);
-    let statusText = p.status;
-    if(def.id==='soul' && p.status==='onboard' && p.completedCircuit){
+    let statusText = '';
+    if(def.id==='soul' && p.completedCircuit){
       const remaining = TRACK_LEN - p.progress;
       statusText = state.bodyCaptured[color]
         ? `needs exactly ${remaining>0?'+':''}${remaining} to win`
         : `own Body not yet captured - can't enter Infinite yet`;
     }
     btn.innerHTML = `<div class="abbr">${def.abbr}</div><div>${def.label}</div><div>${bonusLabel}</div><div style="opacity:0.7;">${statusText}</div>`;
-    if(p.status==='onboard'){
-      btn.addEventListener('click', ()=>{
-        if(mover!==color || state.winner || !state.dice) return;
-        const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
-        state.selected = isSel? null : {color, pieceId:def.id};
-        render();
-      });
-    }
+    btn.addEventListener('click', ()=>{
+      if(mover!==color || state.winner || !state.dice) return;
+      const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
+      state.selected = isSel? null : {color, pieceId:def.id};
+      render();
+    });
     wrap.appendChild(btn);
   });
 }
