@@ -61,13 +61,13 @@
   .app{
     display:flex;
     gap:22px;
-    max-width:1320px;
+    max-width:1680px;
     margin:0 auto;
     align-items:flex-start;
     flex-wrap:wrap;
   }
   .board-panel{
-    flex:1.5;
+    flex:1 1 560px;
     min-width:560px;
     background:linear-gradient(180deg,var(--wood-light),var(--wood));
     border:1px solid #5c422c;
@@ -76,8 +76,9 @@
     box-shadow:0 10px 30px rgba(0,0,0,0.4) inset, 0 4px 14px rgba(0,0,0,0.3);
   }
   .control-panel{
-    flex:1;
-    min-width:360px;
+    flex:0 1 340px;
+    min-width:320px;
+    max-width:340px;
     display:flex;
     flex-direction:column;
     gap:14px;
