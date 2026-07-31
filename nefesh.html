@@ -1189,11 +1189,20 @@ function renderBoard(){
   let legalTargets = {};
   let winMove = null;
   if(state.selected){
-    const moves = getLegalMoves(state.selected.color, state.selected.pieceId);
-    moves.forEach(m=>{
-      if(m.kind==='soul-win'){ winMove = m; return; } // handled separately - highlighted on the Infinite itself, not the board space it happens to share
-      if(m.masterIdx!==undefined) legalTargets[m.masterIdx] = m;
-    });
+    const selPiece = state.pieces[state.selected.color][state.selected.pieceId];
+    if(selPiece.status==='bench'){
+      // A bench piece has exactly one legal destination - its own Placement
+      // space - so it's highlighted the same way any other move target is,
+      // instead of placing the instant it's clicked.
+      const startMaster = START_MASTER[state.selected.color];
+      legalTargets[startMaster] = {kind:'bench-placement', masterIdx:startMaster, occ:occupantsAtMaster(startMaster)};
+    } else {
+      const moves = getLegalMoves(state.selected.color, state.selected.pieceId);
+      moves.forEach(m=>{
+        if(m.kind==='soul-win'){ winMove = m; return; } // handled separately - highlighted on the Infinite itself, not the board space it happens to share
+        if(m.masterIdx!==undefined) legalTargets[m.masterIdx] = m;
+      });
+    }
   }
 
   // Step 2 of this pass: the hub now moves to the front - drawn last, fully
@@ -1225,7 +1234,7 @@ function renderBoard(){
       // piece - the opponent's, or your own (self-capture, or a non-Soul
       // piece completing a full circuit) - so a capture is never a surprise.
       const isCapture = move.kind==='self-lap-capture' || move.kind==='soul-overshoot-capture'
-        || (move.kind==='normal' && move.occ && move.occ.length>0);
+        || ((move.kind==='normal' || move.kind==='bench-placement') && move.occ && move.occ.length>0);
       const ringAttrs = isCapture
         ? {d:vis.path, fill:'rgba(138,46,31,0.32)', stroke:'var(--danger)','stroke-width':3}
         : {d:vis.path, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3};
@@ -1234,7 +1243,8 @@ function renderBoard(){
       const handler = ()=>{
         const mover = currentMover();
         if(mover!==state.selected.color) return;
-        performMove(state.selected.color, state.selected.pieceId, legalTargets[sp.idx]);
+        if(move.kind==='bench-placement') placePiece(state.selected.color, state.selected.pieceId);
+        else performMove(state.selected.color, state.selected.pieceId, legalTargets[sp.idx]);
       };
       ring.addEventListener('click',handler);
       g.style.cursor='pointer';
@@ -1408,27 +1418,22 @@ function renderBenchTray(color){
   const g = el('g',{});
   g.appendChild(el('rect',{x, y, width:BENCH_TRAY_W, height:BENCH_TRAY_H, rx:8, fill:'#2c2018', stroke:'#5c422c', 'stroke-width':2}));
   const benchPieces = PIECE_DEFS.filter(d=>state.pieces[color][d.id].status==='bench');
-  const startOcc = occupantsAtMaster(START_MASTER[color]);
   const fill = color==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
   const textColor = color==='white' ? '#1C1712' : '#efe3c8';
   const pitch = 36, r = 12;
   benchPieces.forEach((def,i)=>{
     const cx = x + 20 + i*pitch, cy = y + BENCH_TRAY_H/2;
+    const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
     const pg = el('g',{style: canAct ? 'cursor:pointer' : '', opacity: canAct?1:0.55});
-    const willCapture = startOcc.length>0;
-    pg.appendChild(el('circle',{cx, cy, r, fill: willCapture?'rgba(138,46,31,0.85)':fill, stroke: willCapture?'var(--danger)':'#8a7757', 'stroke-width':willCapture?2:1.4}));
-    const t = el('text',{x:cx, y:cy+4, 'text-anchor':'middle','font-size':10.5, fill: willCapture?'#f4ecd8':textColor,'font-weight':'700'});
+    pg.appendChild(el('circle',{cx, cy, r, fill, stroke: isSel?'var(--gold-bright)':'#8a7757', 'stroke-width': isSel?3:1.4}));
+    const t = el('text',{x:cx, y:cy+4, 'text-anchor':'middle','font-size':10.5, fill:textColor,'font-weight':'700'});
     t.textContent = def.abbr;
     pg.appendChild(t);
-    const title = el('title',{});
-    title.textContent = willCapture
-      ? `${def.label} - will capture ${startOcc.map(o=>(o.color===color?'own ':'')+getDef(o.pieceId).label).join(', ')}`
-      : def.label;
-    pg.appendChild(title);
     pg.addEventListener('click',(e)=>{
       e.stopPropagation();
       if(!canAct) return;
-      placePiece(color, def.id);
+      state.selected = isSel ? null : {color, pieceId:def.id};
+      render();
     });
     g.appendChild(pg);
   });
