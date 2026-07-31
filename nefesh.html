@@ -151,7 +151,6 @@
   .piece-btn.selected{border-color:var(--gold-bright); box-shadow:0 0 0 2px var(--gold-bright);}
   .piece-btn.captured{opacity:0.35; text-decoration:line-through; cursor:not-allowed;}
   .piece-btn.onboard{border-color:#3f7a4a;}
-  .piece-btn.will-capture{border-color:var(--danger); box-shadow:0 0 0 1px var(--danger); background:#3a1712;}
   .piece-btn:disabled, .piece-btn.disabled{opacity:0.4; cursor:not-allowed;}
   .legal-move-space{cursor:pointer;}
   #log{
@@ -1336,19 +1335,21 @@ function renderBoard(){
       }
     });
   });
+
+  renderBenchTray('white');
+  renderBenchTray('black');
 }
 
 function renderBench(color){
   const wrap = document.getElementById(color+'-pieces');
   wrap.innerHTML='';
   const mover = currentMover();
-  // Placing captures whatever already sits on the starting spot (own piece or
-  // opponent's, same as any other move) - computed once per color so every
-  // bench piece's button can warn about it, same idea as the board's red
-  // capture highlight for onboard moves.
-  const startOcc = occupantsAtMaster(START_MASTER[color]);
   PIECE_DEFS.forEach(def=>{
     const p = state.pieces[color][def.id];
+    // Bench pieces no longer get a card here - they sit in the on-board tray
+    // (see renderBenchTray) instead. This panel now only reflects onboard and
+    // captured pieces.
+    if(p.status==='bench') return;
     const btn = document.createElement('div');
     btn.className='piece-btn';
     if(p.status==='captured') btn.classList.add('captured');
@@ -1362,16 +1363,8 @@ function renderBench(color){
         ? `needs exactly ${remaining>0?'+':''}${remaining} to win`
         : `own Body not yet captured - can't enter Infinite yet`;
     }
-    if(p.status==='bench' && startOcc.length>0){
-      btn.classList.add('will-capture');
-      statusText = 'will capture ' + startOcc.map(o=>(o.color===color?'own ':'')+getDef(o.pieceId).label).join(', ');
-    }
     btn.innerHTML = `<div class="abbr">${def.abbr}</div><div>${def.label}</div><div>${bonusLabel}</div><div style="opacity:0.7;">${statusText}</div>`;
-    if(p.status==='bench'){
-      const canAct = mover===color && !state.winner;
-      if(!canAct) btn.classList.add('disabled');
-      btn.addEventListener('click', ()=>{ if(canAct) placePiece(color, def.id); });
-    } else if(p.status==='onboard'){
+    if(p.status==='onboard'){
       btn.addEventListener('click', ()=>{
         if(mover!==color || state.winner || !state.dice) return;
         const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
@@ -1381,6 +1374,62 @@ function renderBench(color){
     }
     wrap.appendChild(btn);
   });
+}
+
+// Which half of the screen a color's fixed seat currently occupies. Each
+// color's seat is always the SAME two hub quadrants (White: C1/C2, Black:
+// C3/C4) - what changes with a flip is which half of the SCREEN that lands
+// on, not which quadrants belong to which color.
+function seatIsBottom(color){
+  const seatIdx = color==='white' ? 16 : 18;
+  return visualMaster(seatIdx).y > Hy;
+}
+
+const BENCH_TRAY_W = 176, BENCH_TRAY_H = 40, TRAY_MARGIN = 14;
+// Top-left corner of this color's bench tray, in board coordinates. Bench
+// sits on the outer (right) side of whichever half is this color's seat;
+// captured pieces (rendered separately, no tray) sit loose on the inner
+// (left) side of that same half - a diagonal pairing with the opponent's.
+function benchTrayXY(color){
+  const bottom = seatIsBottom(color);
+  return {
+    x: bottom ? (840 - TRAY_MARGIN - BENCH_TRAY_W) : TRAY_MARGIN,
+    y: bottom ? (600 - TRAY_MARGIN - BENCH_TRAY_H) : TRAY_MARGIN
+  };
+}
+
+function renderBenchTray(color){
+  const {x,y} = benchTrayXY(color);
+  const mover = currentMover();
+  const canAct = mover===color && !state.winner;
+  const g = el('g',{});
+  g.appendChild(el('rect',{x, y, width:BENCH_TRAY_W, height:BENCH_TRAY_H, rx:8, fill:'#2c2018', stroke:'#5c422c', 'stroke-width':2}));
+  const benchPieces = PIECE_DEFS.filter(d=>state.pieces[color][d.id].status==='bench');
+  const startOcc = occupantsAtMaster(START_MASTER[color]);
+  const fill = color==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
+  const textColor = color==='white' ? '#1C1712' : '#efe3c8';
+  const pitch = 36, r = 12;
+  benchPieces.forEach((def,i)=>{
+    const cx = x + 20 + i*pitch, cy = y + BENCH_TRAY_H/2;
+    const pg = el('g',{style: canAct ? 'cursor:pointer' : '', opacity: canAct?1:0.55});
+    const willCapture = startOcc.length>0;
+    pg.appendChild(el('circle',{cx, cy, r, fill: willCapture?'rgba(138,46,31,0.85)':fill, stroke: willCapture?'var(--danger)':'#8a7757', 'stroke-width':willCapture?2:1.4}));
+    const t = el('text',{x:cx, y:cy+4, 'text-anchor':'middle','font-size':10.5, fill: willCapture?'#f4ecd8':textColor,'font-weight':'700'});
+    t.textContent = def.abbr;
+    pg.appendChild(t);
+    const title = el('title',{});
+    title.textContent = willCapture
+      ? `${def.label} - will capture ${startOcc.map(o=>(o.color===color?'own ':'')+getDef(o.pieceId).label).join(', ')}`
+      : def.label;
+    pg.appendChild(title);
+    pg.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      if(!canAct) return;
+      placePiece(color, def.id);
+    });
+    g.appendChild(pg);
+  });
+  svg.appendChild(g);
 }
 
 function renderControls(){
