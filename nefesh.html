@@ -661,14 +661,21 @@ function placePiece(color, pieceId){
   const p = state.pieces[color][pieceId];
   if(p.status!=='bench') return;
   const startMaster = START_MASTER[color];
-  const occ = occupantsAtMaster(startMaster).filter(o=>o.color===color);
+  const occ = occupantsAtMaster(startMaster);
   occ.forEach(o=>{
     state.pieces[o.color][o.pieceId].status='captured';
-    log(`${color} self-captures ${getDef(o.pieceId).label} while placing on the starting spot.`);
+    if(o.pieceId==='body'){ state.bodyCaptured[o.color]=true; }
+    if(o.color===color){
+      log(`${color} self-captures its own ${getDef(o.pieceId).label} while placing on the starting spot.`);
+    } else {
+      log(`${color==='white'?'White':'Black'}'s ${getDef(pieceId).label} captures ${o.color}'s ${getDef(o.pieceId).label} while placing.`);
+    }
     if(o.pieceId==='soul'){
       const winner = o.color==='white' ? 'black' : 'white';
       state.winner = winner;
-      state.winReason = `${color} self-captured its own Soul while placing a piece - ${winner} wins.`;
+      state.winReason = o.color===color
+        ? `${color} self-captured its own Soul while placing a piece - ${winner} wins.`
+        : `${color==='white'?'White':'Black'} captured the opposing Soul while placing a piece.`;
     }
   });
   p.status='onboard';
