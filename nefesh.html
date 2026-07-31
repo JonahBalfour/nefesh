@@ -509,9 +509,10 @@ function freshPieces(){
   const raceOrder = PIECE_DEFS.filter(d=>d.category==='race');
   PIECE_DEFS.forEach(d=>{
     if(d.category==='race'){
-      // Race pieces start already on the board, occupying the first 4 spaces
-      // of their own path - no placement needed for these.
-      obj[d.id] = {status:'onboard', progress:raceOrder.indexOf(d), completedCircuit:false};
+      // Race pieces start already on the board, one step past their own
+      // Placement space (so Placement itself starts empty, not sitting under
+      // a Race piece) - no placement needed for these.
+      obj[d.id] = {status:'onboard', progress:raceOrder.indexOf(d)+1, completedCircuit:false};
     } else {
       obj[d.id] = {status:'bench', progress:0, completedCircuit:false};
     }
@@ -666,7 +667,7 @@ function placePiece(color, pieceId){
     state.pieces[o.color][o.pieceId].status='captured';
     if(o.pieceId==='body'){ state.bodyCaptured[o.color]=true; }
     if(o.color===color){
-      log(`${color} self-captures its own ${getDef(o.pieceId).label} while placing on the starting spot.`);
+      log(`${color} self-captures its own ${getDef(o.pieceId).label} while placing on Placement.`);
     } else {
       log(`${color==='white'?'White':'Black'}'s ${getDef(pieceId).label} captures ${o.color}'s ${getDef(o.pieceId).label} while placing.`);
     }
@@ -680,7 +681,7 @@ function placePiece(color, pieceId){
   });
   p.status='onboard';
   p.progress=0;
-  log(`${color==='white'?'White':'Black'} places ${getDef(pieceId).label} on the starting spot.`);
+  log(`${color==='white'?'White':'Black'} places ${getDef(pieceId).label} on Placement.`);
   finishAction(color);
 }
 
@@ -1619,19 +1620,19 @@ refreshLastGameBanner();
 const HOWTO_CONTENT = {
   rules: `
     <h3>THE BOARD</h3>
-    <p>A figure-8: two loops connected by a central hub, with the <b>Infinite</b> right at the center. Each color has a starting dot in the hub (Black top-left, White bottom-right), and each color's path winds all the way around one loop, through the hub, around the other loop, and back — 36 spaces in a full circuit.</p>
+    <p>A figure-8: two loops connected by a central hub, with the <b>Infinite</b> right at the center. Each color has a Placement space in the hub (Black top-left, White bottom-right), and each color's path winds all the way around one loop, through the hub, around the other loop, and back — 36 spaces in a full circuit.</p>
     <h3>YOUR PIECES</h3>
     <p>8 per side, in two categories:</p>
     <ul>
-      <li><b>Race pieces</b> (Creature, Dwarf, Man, Elf) — forward only. They start the game already on the board, at the front of your path.</li>
-      <li><b>Person pieces</b> (Mind, Will, Body, Soul) — can move forward or backward. They start on your bench; you place them onto your starting dot when you're ready to bring them in.</li>
+      <li><b>Race pieces</b> (Creature, Dwarf, Man, Elf) — forward only. They start the game already on the board, one step past your Placement space.</li>
+      <li><b>Person pieces</b> (Mind, Will, Body, Soul) — can move forward or backward. They start on your bench; you place them onto your Placement space when you're ready to bring them in.</li>
     </ul>
     <h3>MOVEMENT</h3>
     <p>Every piece has a bonus (Creature +0, Dwarf +1, Man +2, Elf +3, Mind +1, Will +2, Body +3, Soul +0). Each move is <b>the sum of both dice, plus that piece's bonus</b> — always the full bonus, no partial amounts, and no other dice combinations. So if you roll a 4 and 3 (sum 7), your Elf (+3) always moves exactly 10.</p>
     <h3>YOUR TURN</h3>
-    <p>Dice are rolled once per round, shared by both players that round. On your turn, you either place a Person piece from your bench onto your starting dot, or move one piece already on the board.</p>
+    <p>Dice are rolled once per round, shared by both players that round. On your turn, you either place a Person piece from your bench onto your Placement space, or move one piece already on the board.</p>
     <h3>CAPTURES</h3>
-    <p>Landing on <b>any</b> occupied space — opponent's or your own — captures whatever's there. Watch out: your Race pieces start sitting exactly on your own starting dot, so placing a Person piece there before that Race piece has moved away will self-capture it.</p>
+    <p>Landing on <b>any</b> occupied space — opponent's or your own — captures whatever's there, so always check what's sitting on your destination before committing to a move.</p>
     <h3>HOW TO WIN</h3>
     <p>Two ways:</p>
     <ul>

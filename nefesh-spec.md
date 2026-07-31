@@ -41,9 +41,9 @@ original sketch.
   reads as broken apart. One circle, one clean division into four regions.
 - Top two quadrants: light. Bottom two quadrants: dark. (This is a deliberate
   exception — everywhere else on the board, spaces alternate; here they don't.)
-- Space 16 (top-left quadrant): light background, holds Black's starting dot.
+- Space 16 (top-left quadrant): light background, holds Black Placement.
 - Space 17 (top-right quadrant): light background.
-- Space 18 (bottom-right quadrant): dark background, holds White's starting dot.
+- Space 18 (bottom-right quadrant): dark background, holds White Placement.
 - Space 19 (bottom-left quadrant): dark background.
 - The circle should connect cleanly to both outer loops — no gap showing
   background through, no loops overlapping or crossing past it.
@@ -213,14 +213,16 @@ stakes; this tighter version keeps captures and positioning more consequential.
 
 **Starting positions:**
 - The 4 Race pieces (Creature, Dwarf, Man, Elf) start the game already on the
-  board, occupying the first 4 spaces of their own path (in that bonus order)
-  instead of on the bench — no placement needed for these.
+  board, occupying spaces A1-A4 (Black) / B1-B4 (White) — one step past their
+  own Placement space, in that bonus order — instead of on the bench. No
+  placement needed for these.
 - The 4 Person pieces (Mind, Will, Body, Soul) still start on the bench and
-  must be placed on the player's own starting dot before they can move.
-- Because a piece's starting square (progress 0) sits on the same space as
-  the player's own starting dot, placing a Person piece before moving your
-  Creature away from that dot will self-capture your own Creature — a real
-  tactical choice (move it first, or accept the trade for tempo), not a bug.
+  must be placed on the player's own Placement space before they can move.
+- Placement stays empty at the start of the game, since Race pieces begin one
+  step past it (revised from an earlier version where a Race piece sat
+  directly on it — see below). It can still end up occupied later if a piece
+  returns there, at which point placing a bench piece on top of it captures
+  whatever's there, same as landing on any other occupied space.
 
 **Turn structure:**
 - Each round, players alternate who goes first (White first in round 1, Black
@@ -228,7 +230,8 @@ stakes; this tighter version keeps captures and positioning more consequential.
 - Dice are rolled once per round, by whichever player moves second that round.
 - Each player must place a Person piece still on the bench, or move any
   onboard piece, every round.
-- Placement happens on a player's own starting dot (16 for Black, 18 for White).
+- Placement happens on a player's own Placement space (16 for Black, 18 for
+  White).
 
 **Captures:**
 - Landing on any occupied space — including your own piece — captures
