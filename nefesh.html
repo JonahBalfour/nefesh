@@ -151,6 +151,7 @@
   .piece-btn.selected{border-color:var(--gold-bright); box-shadow:0 0 0 2px var(--gold-bright);}
   .piece-btn.captured{opacity:0.35; text-decoration:line-through; cursor:not-allowed;}
   .piece-btn.onboard{border-color:#3f7a4a;}
+  .piece-btn.will-capture{border-color:var(--danger); box-shadow:0 0 0 1px var(--danger); background:#3a1712;}
   .piece-btn:disabled, .piece-btn.disabled{opacity:0.4; cursor:not-allowed;}
   .legal-move-space{cursor:pointer;}
   #log{
@@ -1341,6 +1342,11 @@ function renderBench(color){
   const wrap = document.getElementById(color+'-pieces');
   wrap.innerHTML='';
   const mover = currentMover();
+  // Placing captures whatever already sits on the starting spot (own piece or
+  // opponent's, same as any other move) - computed once per color so every
+  // bench piece's button can warn about it, same idea as the board's red
+  // capture highlight for onboard moves.
+  const startOcc = occupantsAtMaster(START_MASTER[color]);
   PIECE_DEFS.forEach(def=>{
     const p = state.pieces[color][def.id];
     const btn = document.createElement('div');
@@ -1355,6 +1361,10 @@ function renderBench(color){
       statusText = state.bodyCaptured[color]
         ? `needs exactly ${remaining>0?'+':''}${remaining} to win`
         : `own Body not yet captured - can't enter Infinite yet`;
+    }
+    if(p.status==='bench' && startOcc.length>0){
+      btn.classList.add('will-capture');
+      statusText = 'will capture ' + startOcc.map(o=>(o.color===color?'own ':'')+getDef(o.pieceId).label).join(', ');
     }
     btn.innerHTML = `<div class="abbr">${def.abbr}</div><div>${def.label}</div><div>${bonusLabel}</div><div style="opacity:0.7;">${statusText}</div>`;
     if(p.status==='bench'){
