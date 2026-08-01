@@ -160,6 +160,10 @@
   }
   details summary{cursor:pointer; color:var(--gold); font-size:12px; margin-bottom:6px;}
   details p, details li{font-size:12px; color:var(--parchment-dim); line-height:1.5;}
+  .top-actions{
+    position:fixed; top:16px; right:16px; z-index:20;
+    display:flex; gap:10px;
+  }
   .overlay{
     position:fixed; inset:0; background:rgba(10,6,4,0.82);
     display:none; align-items:center; justify-content:center; z-index:50;
@@ -188,6 +192,9 @@
     body{ padding:12px; }
     h1.title{ font-size:28px; letter-spacing:2px; }
     .subtitle{ font-size:12px; margin-bottom:14px; }
+    /* Not enough width here to pin the buttons in the corner without them
+       overlapping the title - fall back to the original in-flow row. */
+    .top-actions{ position:static; display:flex; gap:10px; justify-content:center; margin-bottom:18px; }
     .app{ flex-direction:column; gap:14px; }
     .board-panel{ min-width:0; flex-basis:auto; width:100%; padding:8px; }
     .control-panel{ min-width:0; flex-basis:auto; width:100%; }
@@ -203,7 +210,10 @@
   @media (max-height: 500px) and (orientation: landscape){
     body{ padding:6px; }
     h1.title, .subtitle{ display:none; }
-    .top-actions{ margin-bottom:6px; }
+    /* No title above to give the fixed corner buttons clear air here - they'd
+       sit on top of the control panel's own content instead. Back to an
+       in-flow row above the board, like before the corner treatment. */
+    .top-actions{ position:static; display:flex; gap:8px; justify-content:center; margin-bottom:6px; }
     .app{ flex-direction:row; flex-wrap:nowrap; gap:8px; align-items:stretch; max-width:none; }
     .board-panel{ min-width:0; flex:1 1 auto; width:auto; padding:6px; display:flex; align-items:center; justify-content:center; max-height:calc(100vh - 50px); }
     #board-svg{ width:auto !important; height:100% !important; max-width:100%; max-height:calc(100vh - 62px); }
@@ -217,7 +227,7 @@
 
 <h1 class="title">NEFESH</h1>
 <p class="subtitle">a prototype board for playtesting — click to place, move, and capture</p>
-<div class="top-actions" style="text-align:center; margin-bottom:18px; display:flex; gap:10px; justify-content:center;">
+<div class="top-actions">
   <button id="howto-btn" style="padding:9px 20px; font-size:13px;">How to Play</button>
   <button id="menu-btn" title="Menu" style="padding:9px 14px; font-size:16px; line-height:1;">&#9776;</button>
 </div>
@@ -316,6 +326,10 @@
       <button id="menu-close-btn">Close</button>
     </div>
     <button id="menu-newgame-btn" style="width:100%; padding:10px; font-size:14px; margin-bottom:18px;">New Game…</button>
+    <div class="row" style="margin-bottom:18px;">
+      <span style="font-size:13px; color:var(--parchment);">Sound effects</span>
+      <button id="sound-toggle-btn" style="padding:6px 16px; font-size:12px;"></button>
+    </div>
     <div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
       <button class="menu-tab-btn" data-tab="log">Log</button>
       <button class="menu-tab-btn" data-tab="pieces">Piece Reference</button>
@@ -391,10 +405,10 @@ function getDef(id){ return PIECE_DEFS.find(p=>p.id===id); }
 // normal shape and the hub simply shows through in the small gap that would
 // otherwise appear at the seam.
 const Hx=420, Hy=300;
-const HUB_R_OUT=75; // the hub sits on top now (no clipping)
-const HUB_R_IN=36;
-const INF_R=39;
-const LOOP_R_OUT=175, LOOP_R_IN=130;
+const HUB_R_OUT=85; // the hub sits on top now (no clipping)
+const HUB_R_IN=40;
+const INF_R=45;
+const LOOP_R_OUT=195, LOOP_R_IN=148;
 const LOOP_GAP=14; // the two loops are placed almost touching - only this much space between their nearest edges
 const Lx=Hx-LOOP_R_OUT-LOOP_GAP/2, Ly=Hy;
 const Rx=Hx+LOOP_R_OUT+LOOP_GAP/2, Ry=Hy;
@@ -508,6 +522,7 @@ function getAudioCtx(){
   return audioCtx;
 }
 function playDiceSound(){
+  if(!soundEnabled) return;
   const ctx = getAudioCtx();
   if(!ctx) return;
   if(ctx.state==='suspended') ctx.resume();
@@ -589,6 +604,59 @@ function log(msg){
   if(state.log.length>60) state.log.pop();
 }
 
+// ---------- move/capture sound effects ----------
+// Reuses the AudioContext/getAudioCtx() set up above for the dice sound.
+let soundEnabled = true;
+try{ soundEnabled = localStorage.getItem('nefesh-sound-enabled') !== 'off'; } catch(e){ /* private browsing */ }
+function playTone(freq, startTime, duration, gainPeak, type){
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(gainPeak, startTime+0.008);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime+duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(startTime+duration+0.02);
+}
+function playMoveSound(){
+  if(!soundEnabled) return;
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  playTone(520, ctx.currentTime, 0.09, 0.18, 'triangle');
+}
+function playCaptureSound(){
+  if(!soundEnabled) return;
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  const t = ctx.currentTime;
+  playTone(220, t, 0.16, 0.22, 'sawtooth');
+  playTone(160, t+0.05, 0.18, 0.2, 'sawtooth');
+}
+function playWinSound(){
+  if(!soundEnabled) return;
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  const t = ctx.currentTime;
+  [523.25, 659.25, 783.99, 1046.5].forEach((freq,i)=>{
+    playTone(freq, t+i*0.11, 0.3, 0.16, 'sine');
+  });
+}
+function setSoundEnabled(on){
+  soundEnabled = on;
+  try{ localStorage.setItem('nefesh-sound-enabled', on ? 'on' : 'off'); } catch(e){ /* private browsing - not critical */ }
+  updateSoundToggleBtn();
+}
+function updateSoundToggleBtn(){
+  const btn = document.getElementById('sound-toggle-btn');
+  if(!btn) return;
+  btn.textContent = soundEnabled ? 'On' : 'Off';
+}
+
 // ---------- board occupancy ----------
 function occupantsAtMaster(masterIdx){
   const res=[];
@@ -602,6 +670,15 @@ function occupantsAtMaster(masterIdx){
     }
   }
   return res;
+}
+
+// A Soul can't be captured - by either player, including its own owner
+// landing another piece on it by accident - until that Soul's own Body has
+// been captured. Without this, a stray self-capture could end the game via
+// Soul loss before Body's fate was ever decided, which defeats the point of
+// the Body-gate.
+function soulCaptureBlocked(occ){
+  return occ.some(o=>o.pieceId==='soul' && !state.bodyCaptured[o.color]);
 }
 
 // ---------- legal move computation ----------
@@ -626,7 +703,6 @@ function getLegalMoves(color, pieceId){
   });
 
   const legal=[];
-  const oppColor = color==='white'?'black':'white';
 
   deltas.forEach(delta=>{
     const newProgress = p.progress + delta;
@@ -639,8 +715,7 @@ function getLegalMoves(color, pieceId){
       }
       const masterIdx = pathToMaster(color, newProgress);
       const occ = occupantsAtMaster(masterIdx);
-      const oppSoulThere = occ.some(o=>o.color===oppColor && o.pieceId==='soul');
-      if(oppSoulThere && !state.bodyCaptured[oppColor]) return;
+      if(soulCaptureBlocked(occ)) return;
       legal.push({delta, newProgress, kind:'normal', masterIdx, occ});
       return;
     }
@@ -665,8 +740,7 @@ function getLegalMoves(color, pieceId){
     {
       const masterIdx = pathToMaster(color, newProgress);
       const occ = occupantsAtMaster(masterIdx);
-      const oppSoulThere = occ.some(o=>o.color===oppColor && o.pieceId==='soul');
-      if(oppSoulThere && !state.bodyCaptured[oppColor]) return;
+      if(soulCaptureBlocked(occ)) return;
       legal.push({delta, newProgress, kind:'normal', masterIdx, occ});
     }
   });
@@ -674,9 +748,16 @@ function getLegalMoves(color, pieceId){
   return legal;
 }
 
+function canPlaceAnyBenchPiece(color){
+  const hasBench = PIECE_DEFS.some(d=> state.pieces[color][d.id].status==='bench');
+  if(!hasBench) return false;
+  // Every bench piece of this color shares the same destination (its own
+  // Placement space), so one occupancy check covers all of them.
+  return !soulCaptureBlocked(occupantsAtMaster(START_MASTER[color]));
+}
+
 function hasAnyLegalAction(color){
-  const bench = PIECE_DEFS.some(d=> state.pieces[color][d.id].status==='bench');
-  if(bench) return true;
+  if(canPlaceAnyBenchPiece(color)) return true;
   return PIECE_DEFS.some(d=>{
     const p = state.pieces[color][d.id];
     return p.status==='onboard' && getLegalMoves(color,d.id).length>0;
@@ -703,6 +784,7 @@ function placePiece(color, pieceId){
   if(p.status!=='bench') return;
   const startMaster = START_MASTER[color];
   const occ = occupantsAtMaster(startMaster);
+  if(soulCaptureBlocked(occ)) return;
   occ.forEach(o=>{
     state.pieces[o.color][o.pieceId].status='captured';
     if(o.pieceId==='body'){ state.bodyCaptured[o.color]=true; }
@@ -722,6 +804,9 @@ function placePiece(color, pieceId){
   p.status='onboard';
   p.progress=0;
   log(`${color==='white'?'White':'Black'} places ${getDef(pieceId).label} on Placement.`);
+  if(state.winner) playWinSound();
+  else if(occ.length>0) playCaptureSound();
+  else playMoveSound();
   finishAction(color);
 }
 
@@ -732,15 +817,18 @@ function performMove(color, pieceId, move){
   if(move.kind==='self-lap-capture'){
     p.status='captured';
     log(`${def.label} (${color}) completes a full circuit and is captured.`);
+    playCaptureSound();
   } else if(move.kind==='soul-win'){
     p.progress = move.newProgress;
     state.winner = color;
     state.winReason = `${color==='white'?'White':'Black'}'s Soul entered the Infinite.`;
+    playWinSound();
   } else if(move.kind==='soul-overshoot-capture'){
     p.status='captured';
     const winner = color==='white' ? 'black' : 'white';
     state.winner = winner;
     state.winReason = `${def.label} (${color})'s Soul circled all the way back past its start and was lost - ${winner} wins.`;
+    playWinSound();
   } else if(move.kind==='normal'){
     p.progress = move.newProgress;
     if(pieceId==='soul' && move.newProgress>=TRACK_LEN){
@@ -766,6 +854,9 @@ function performMove(color, pieceId, move){
           : `${color==='white'?'White':'Black'} captured the opposing Soul.`;
       }
     });
+    if(state.winner) playWinSound();
+    else if(move.occ.length>0) playCaptureSound();
+    else playMoveSound();
   }
   finishAction(color);
 }
@@ -910,10 +1001,12 @@ function isSoulOutAndMoving(color){
 
 function collectBotOptions(color){
   const options = [];
-  PIECE_DEFS.forEach(d=>{
-    const p = state.pieces[color][d.id];
-    if(p.status==='bench') options.push({type:'place', pieceId:d.id});
-  });
+  if(canPlaceAnyBenchPiece(color)){
+    PIECE_DEFS.forEach(d=>{
+      const p = state.pieces[color][d.id];
+      if(p.status==='bench') options.push({type:'place', pieceId:d.id});
+    });
+  }
   PIECE_DEFS.forEach(d=>{
     const p = state.pieces[color][d.id];
     if(p.status==='onboard'){
@@ -1233,7 +1326,10 @@ function renderBoard(){
       // space - so it's highlighted the same way any other move target is,
       // instead of placing the instant it's clicked.
       const startMaster = START_MASTER[state.selected.color];
-      legalTargets[startMaster] = {kind:'bench-placement', masterIdx:startMaster, occ:occupantsAtMaster(startMaster)};
+      const startOcc = occupantsAtMaster(startMaster);
+      if(!soulCaptureBlocked(startOcc)){
+        legalTargets[startMaster] = {kind:'bench-placement', masterIdx:startMaster, occ:startOcc};
+      }
     } else {
       const moves = getLegalMoves(state.selected.color, state.selected.pieceId);
       moves.forEach(m=>{
@@ -1253,17 +1349,17 @@ function renderBoard(){
     // outside the hub, spaces always alternate; inside the hub, top pair is light and bottom pair is dark (not alternating)
     const fill = isHub ? (sp.half==='light' ? '#e9dcc0' : '#181410') : (sp.shade==='dark' ? '#181410' : '#e9dcc0');
     const g = el('g',{});
-    const wedgeAttrs = {d:vis.path, fill, stroke:'#5c422c','stroke-width':1.6};
+    const wedgeAttrs = {d:vis.path, fill, stroke:'#5c422c','stroke-width':2.8};
     const wedge = el('path',wedgeAttrs);
     g.appendChild(wedge);
     if(isHub && sp.isStart){
       const dotColor = sp.isStart==='white' ? '#f4ecd8' : '#141110';
-      g.appendChild(el('circle',{cx:vis.x, cy:vis.y, r:7, fill:dotColor, stroke:'#8a7757','stroke-width':1.2}));
+      g.appendChild(el('circle',{cx:vis.x, cy:vis.y, r:10, fill:dotColor, stroke:'#8a7757','stroke-width':2}));
     }
     // space label: zone (loop A / hub C / loop B) + position within it
     const labelDark = fill==='#e9dcc0';
-    const labelY = (isHub && sp.isStart) ? vis.y+15 : vis.y+4;
-    const numLabel = el('text',{x:vis.x, y:labelY, 'text-anchor':'middle', 'font-size':10, 'font-weight':'700', fill: labelDark?'#181410':'#e9dcc0', 'pointer-events':'none'});
+    const labelY = (isHub && sp.isStart) ? vis.y+17 : vis.y+5;
+    const numLabel = el('text',{x:vis.x, y:labelY, 'text-anchor':'middle', 'font-size':13, 'font-weight':'700', fill: labelDark?'#181410':'#e9dcc0', 'pointer-events':'none'});
     numLabel.textContent = displayLabel(sp.idx);
     g.appendChild(numLabel);
     if(legalTargets[sp.idx]){
@@ -1274,8 +1370,8 @@ function renderBoard(){
       const isCapture = move.kind==='self-lap-capture' || move.kind==='soul-overshoot-capture'
         || ((move.kind==='normal' || move.kind==='bench-placement') && move.occ && move.occ.length>0);
       const ringAttrs = isCapture
-        ? {d:vis.path, fill:'rgba(138,46,31,0.32)', stroke:'var(--danger)','stroke-width':3}
-        : {d:vis.path, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3};
+        ? {d:vis.path, fill:'rgba(138,46,31,0.32)', stroke:'var(--danger)','stroke-width':5}
+        : {d:vis.path, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':5};
       const ring = el('path',ringAttrs);
       ring.classList.add('legal-move-space');
       const handler = ()=>{
@@ -1294,9 +1390,9 @@ function renderBoard(){
 
   // infinite: one plain circle, with a subtle diagonal guideline hinting at the crossing
   const infG = el('g',{});
-  infG.appendChild(el('circle',{cx:INFINITE_PT.x, cy:INFINITE_PT.y, r:INF_R, fill:'#6b4a35', stroke:'#5c422c','stroke-width':2}));
+  infG.appendChild(el('circle',{cx:INFINITE_PT.x, cy:INFINITE_PT.y, r:INF_R, fill:'#6b4a35', stroke:'#5c422c','stroke-width':3}));
   if(winMove){
-    const winRing = el('circle',{cx:INFINITE_PT.x, cy:INFINITE_PT.y, r:INF_R+8, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':3});
+    const winRing = el('circle',{cx:INFINITE_PT.x, cy:INFINITE_PT.y, r:INF_R+8, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':5});
     winRing.classList.add('legal-move-space');
     const handler = ()=>{
       const mover = currentMover();
@@ -1310,7 +1406,7 @@ function renderBoard(){
   }
   infG.appendChild(checkeredInfinitySymbol(INFINITE_PT.x, INFINITE_PT.y, INF_R*0.62, INF_R*0.09, 16));
   infG.appendChild(diagonalGuideline(INFINITE_PT.x, INFINITE_PT.y, INF_R*0.90));
-  infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+INF_R+16, 'text-anchor':'middle', 'font-size':11, 'font-weight':'700', fill:'var(--gold-bright)'})).textContent='INF';
+  infG.appendChild(el('text',{x:INFINITE_PT.x, y:INFINITE_PT.y+INF_R+18, 'text-anchor':'middle', 'font-size':13, 'font-weight':'700', fill:'var(--gold-bright)'})).textContent='INF';
   svg.appendChild(infG);
 
   // Direction-of-travel arrows: each loop gets 4 short "signpost" arrows,
@@ -1353,8 +1449,8 @@ function renderBoard(){
       const g = el('g',{style:'cursor:pointer'});
       const fill = color==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
       const textColor = color==='white' ? '#1C1712' : '#efe3c8';
-      g.appendChild(el('circle',{cx:pt.x, cy:pt.y, r:12, fill, stroke: isSel?'var(--gold-bright)':'#8a7757', 'stroke-width': isSel?3:1.4}));
-      const t = el('text',{x:pt.x, y:pt.y+4, 'text-anchor':'middle', 'font-size':10.5, fill:textColor, 'font-weight':'700'});
+      g.appendChild(el('circle',{cx:pt.x, cy:pt.y, r:18, fill, stroke: isSel?'var(--gold-bright)':'#8a7757', 'stroke-width': isSel?4.2:2.2}));
+      const t = el('text',{x:pt.x, y:pt.y+5, 'text-anchor':'middle', 'font-size':14, fill:textColor, 'font-weight':'700'});
       t.textContent = def.abbr;
       g.appendChild(t);
       g.addEventListener('click',(e)=>{
@@ -1419,7 +1515,7 @@ function seatIsBottom(color){
   return visualMaster(seatIdx).y > Hy;
 }
 
-const BENCH_TRAY_W = 176, BENCH_TRAY_H = 40, TRAY_MARGIN = 14;
+const BENCH_TRAY_W = 220, BENCH_TRAY_H = 56, TRAY_MARGIN = 14;
 // Top-left corner of this color's bench tray, in board coordinates. Bench
 // sits on the outer (right) side of whichever half is this color's seat;
 // captured pieces (rendered separately, no tray) sit loose on the inner
@@ -1437,17 +1533,17 @@ function renderBenchTray(color){
   const mover = currentMover();
   const canAct = mover===color && !state.winner;
   const g = el('g',{});
-  g.appendChild(el('rect',{x, y, width:BENCH_TRAY_W, height:BENCH_TRAY_H, rx:8, fill:'#2c2018', stroke:'#5c422c', 'stroke-width':2}));
+  g.appendChild(el('rect',{x, y, width:BENCH_TRAY_W, height:BENCH_TRAY_H, rx:8, fill:'#2c2018', stroke:'#5c422c', 'stroke-width':3}));
   const benchPieces = PIECE_DEFS.filter(d=>state.pieces[color][d.id].status==='bench');
   const fill = color==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
   const textColor = color==='white' ? '#1C1712' : '#efe3c8';
-  const pitch = 36, r = 12;
+  const pitch = 48, r = 18;
   benchPieces.forEach((def,i)=>{
-    const cx = x + 20 + i*pitch, cy = y + BENCH_TRAY_H/2;
+    const cx = x + 26 + i*pitch, cy = y + BENCH_TRAY_H/2;
     const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
     const pg = el('g',{style: canAct ? 'cursor:pointer' : '', opacity: canAct?1:0.55});
-    pg.appendChild(el('circle',{cx, cy, r, fill, stroke: isSel?'var(--gold-bright)':'#8a7757', 'stroke-width': isSel?3:1.4}));
-    const t = el('text',{x:cx, y:cy+4, 'text-anchor':'middle','font-size':10.5, fill:textColor,'font-weight':'700'});
+    pg.appendChild(el('circle',{cx, cy, r, fill, stroke: isSel?'var(--gold-bright)':'#8a7757', 'stroke-width': isSel?4.2:2.2}));
+    const t = el('text',{x:cx, y:cy+5, 'text-anchor':'middle','font-size':14, fill:textColor,'font-weight':'700'});
     t.textContent = def.abbr;
     pg.appendChild(t);
     pg.addEventListener('click',(e)=>{
@@ -1476,15 +1572,15 @@ function renderCapturedRow(zoneColor){
   const bottom = seatIsBottom(zoneColor);
   const cy = benchTrayXY(zoneColor).y + BENCH_TRAY_H/2;
   const growRight = bottom; // bench sits right when bottom, left when top - captured takes the other side
-  const r = 12, pitch = 36;
+  const r = 18, pitch = 48;
   const startX = growRight ? (TRAY_MARGIN + r) : (840 - TRAY_MARGIN - r);
   const fill = pieceColor==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
   const textColor = pieceColor==='white' ? '#1C1712' : '#efe3c8';
   const g = el('g',{});
   capturedPieces.forEach((def,i)=>{
     const cx = growRight ? startX + i*pitch : startX - i*pitch;
-    g.appendChild(el('circle',{cx, cy, r, fill, stroke:'#8a7757','stroke-width':1.4}));
-    const t = el('text',{x:cx, y:cy+4, 'text-anchor':'middle', 'font-size':10.5, fill:textColor, 'font-weight':'700'});
+    g.appendChild(el('circle',{cx, cy, r, fill, stroke:'#8a7757','stroke-width':2.2}));
+    const t = el('text',{x:cx, y:cy+5, 'text-anchor':'middle', 'font-size':14, fill:textColor, 'font-weight':'700'});
     t.textContent = def.abbr;
     g.appendChild(t);
   });
@@ -1788,6 +1884,8 @@ function closeMenuOverlay(){
 }
 document.getElementById('menu-btn').addEventListener('click', openMenuOverlay);
 document.getElementById('menu-close-btn').addEventListener('click', closeMenuOverlay);
+document.getElementById('sound-toggle-btn').addEventListener('click', ()=> setSoundEnabled(!soundEnabled));
+updateSoundToggleBtn();
 
 render();
 openSetupOverlay(); // greet the player with the setup screen before their first game

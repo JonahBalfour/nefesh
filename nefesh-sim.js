@@ -35,7 +35,9 @@ function freshPieces(){
   const raceOrder = PIECE_DEFS.filter(d=>d.category==='race');
   PIECE_DEFS.forEach(d=>{
     if(PREPLACE_RACE_PIECES && d.category==='race'){
-      obj[d.id] = {status:'onboard', progress:raceOrder.indexOf(d), completedCircuit:false};
+      // +1: matches nefesh.html's current rule - Race pieces start one step
+      // past their own Placement space, so Placement itself starts empty.
+      obj[d.id] = {status:'onboard', progress:raceOrder.indexOf(d)+1, completedCircuit:false};
     } else {
       obj[d.id] = {status:'bench', progress:0, completedCircuit:false};
     }
@@ -107,6 +109,13 @@ function effectiveBonus(color, def){
   return def.bonus;
 }
 
+// Matches nefesh.html's fix - a Soul can't be captured by anyone, including
+// its own owner landing another piece on it by accident, until that Soul's
+// own Body has been captured.
+function soulCaptureBlocked(occ){
+  return occ.some(o=>o.pieceId==='soul' && !state.bodyCaptured[o.color]);
+}
+
 function getLegalMoves(color, pieceId){
   if(state.winner) return [];
   const def = getDef(pieceId);
@@ -127,7 +136,6 @@ function getLegalMoves(color, pieceId){
   });
 
   const legal=[];
-  const oppColor = color==='white'?'black':'white';
 
   deltas.forEach(delta=>{
     const newProgress = p.progress + delta;
@@ -140,8 +148,7 @@ function getLegalMoves(color, pieceId){
       }
       const masterIdx = pathToMaster(color, newProgress);
       const occ = occupantsAtMaster(masterIdx);
-      const oppSoulThere = occ.some(o=>o.color===oppColor && o.pieceId==='soul');
-      if(oppSoulThere && !state.bodyCaptured[oppColor]) return;
+      if(soulCaptureBlocked(occ)) return;
       legal.push({delta, newProgress, kind:'normal', masterIdx, occ});
       return;
     }
@@ -163,8 +170,7 @@ function getLegalMoves(color, pieceId){
     {
       const masterIdx = pathToMaster(color, newProgress);
       const occ = occupantsAtMaster(masterIdx);
-      const oppSoulThere = occ.some(o=>o.color===oppColor && o.pieceId==='soul');
-      if(oppSoulThere && !state.bodyCaptured[oppColor]) return;
+      if(soulCaptureBlocked(occ)) return;
       legal.push({delta, newProgress, kind:'normal', masterIdx, occ});
     }
   });
@@ -172,9 +178,16 @@ function getLegalMoves(color, pieceId){
   return legal;
 }
 
+function canPlaceAnyBenchPiece(color){
+  const hasBench = PIECE_DEFS.some(d=> state.pieces[color][d.id].status==='bench');
+  if(!hasBench) return false;
+  // Every bench piece of this color shares the same destination (its own
+  // Placement space), so one occupancy check covers all of them.
+  return !soulCaptureBlocked(occupantsAtMaster(START_MASTER[color]));
+}
+
 function hasAnyLegalAction(color){
-  const bench = PIECE_DEFS.some(d=> state.pieces[color][d.id].status==='bench');
-  if(bench) return true;
+  if(canPlaceAnyBenchPiece(color)) return true;
   return PIECE_DEFS.some(d=>{
     const p = state.pieces[color][d.id];
     return p.status==='onboard' && getLegalMoves(color,d.id).length>0;
@@ -187,14 +200,24 @@ function placePiece(color, pieceId){
   const p = state.pieces[color][pieceId];
   if(p.status!=='bench') return;
   const startMaster = START_MASTER[color];
-  const occ = occupantsAtMaster(startMaster).filter(o=>o.color===color);
+  // Matches nefesh.html's fix - placement captures ANY occupant there, own
+  // color or opponent's, not just a self-capture - but never a protected Soul.
+  const occ = occupantsAtMaster(startMaster);
+  if(soulCaptureBlocked(occ)) return;
   occ.forEach(o=>{
     state.pieces[o.color][o.pieceId].status='captured';
-    log(`${color} self-captures ${getDef(o.pieceId).label} while placing on the starting spot.`);
+    if(o.pieceId==='body'){ state.bodyCaptured[o.color]=true; }
+    if(o.color===color){
+      log(`${color} self-captures ${getDef(o.pieceId).label} while placing on the starting spot.`);
+    } else {
+      log(`${color}'s placement captures ${o.color}'s ${getDef(o.pieceId).label}.`);
+    }
     if(o.pieceId==='soul'){
       const winner = o.color==='white' ? 'black' : 'white';
       state.winner = winner;
-      state.winReason = `${color} self-captured its own Soul while placing a piece - ${winner} wins.`;
+      state.winReason = o.color===color
+        ? `${color} self-captured its own Soul while placing a piece - ${winner} wins.`
+        : `${color} captured the opposing Soul while placing a piece.`;
     }
   });
   p.status='onboard';
@@ -365,6 +388,7 @@ let PLACE_AND_MOVE_MODE = 'off'; // 'off' | 'mandatory' | 'optional' - direction
 
 function collectPlaceOptions(color){
   const options = [];
+  if(!canPlaceAnyBenchPiece(color)) return options;
   PIECE_DEFS.forEach(d=>{
     if(state.pieces[color][d.id].status==='bench') options.push({type:'place', pieceId:d.id});
   });
@@ -550,6 +574,7 @@ function simulateOneGame(maxRounds){
   resetState();
   let actions = 0;
   let passStreak = 0; // both sides passing in a row with no dice ever mattering = true deadlock
+  let passCount = 0; // how many individual turns in THIS game had no legal action
   while(!state.winner && state.round <= maxRounds){
     if(!state.dice) rollDice();
     const mover = currentMover();
@@ -558,6 +583,7 @@ function simulateOneGame(maxRounds){
     actions++;
     if(result==='passed'){
       passStreak++;
+      passCount++;
       if(passStreak>=4){ break; } // both sides passed twice in a row = true stalemate, stop early
     } else {
       passStreak = 0;
@@ -569,6 +595,7 @@ function simulateOneGame(maxRounds){
     winReason: state.winReason,
     rounds: state.round,
     actions,
+    passCount,
     stalemate: !state.winner,
     bodyCapturedWhite: state.bodyCaptured.white,
     bodyCapturedBlack: state.bodyCaptured.black,
@@ -598,6 +625,8 @@ function runBatch(label, {sacrifice=false, soulBonus=0, placeAndMove='off', prep
   let soulCaptureWins = 0;
   const roundCounts = [];
   const contactRounds = [];
+  let gamesWithAnyPass = 0;
+  let totalPassEvents = 0;
 
   for(let i=0;i<N;i++){
     try {
@@ -616,6 +645,8 @@ function runBatch(label, {sacrifice=false, soulBonus=0, placeAndMove='off', prep
       totalRounds += r.rounds;
       roundCounts.push(r.rounds);
       if(r.firstContactRound!==null) contactRounds.push(r.firstContactRound);
+      if(r.passCount>0) gamesWithAnyPass++;
+      totalPassEvents += r.passCount;
     } catch(e){
       errors++;
       console.log('GAME THREW AN ERROR:', e.message);
@@ -645,6 +676,8 @@ function runBatch(label, {sacrifice=false, soulBonus=0, placeAndMove='off', prep
   const optP90 = sortedOpts.length ? sortedOpts[Math.floor(sortedOpts.length*0.9)] : NaN;
   console.log(`Legal options per turn (branching factor): median ${optMedian}, average ${optAvg}, 90th pct ${optP90}`);
   console.log(`Win reasons:`, winReasons);
+  console.log(`"No legal action" (Pass) turns: ${totalPassEvents} out of ${optionCounts.length} total turns (${(100*totalPassEvents/optionCounts.length).toFixed(3)}%)`);
+  console.log(`Games with at least one Pass turn: ${gamesWithAnyPass} out of ${N} (${(100*gamesWithAnyPass/N).toFixed(2)}%)`);
 }
 
 // ============ strategy-gap harness: pits two named bot strategies against each other ============
@@ -777,7 +810,13 @@ function runPersonaImpact(personaId, gamesCount, ruleOpts={}){
 }
 
 const LIVE_RULES = {bonusMode:'fixed', diceMenu:'sum-only', preplaceRace:true}; // matches nefesh.html as currently shipped
-['vanguard','herald','assassin','guardian','zealot','turtle'].forEach(id=>{
-  runPersonaImpact(id, 400, LIVE_RULES);
-});
+
+// How often does "no legal action" (Pass) actually come up under the live
+// ruleset? Balanced-vs-balanced greedy bots (BOT_STRATEGY default), a large
+// sample so the rare-event rate is trustworthy.
+runBatch('Live rules - Pass frequency check', LIVE_RULES);
+
+// ['vanguard','herald','assassin','guardian','zealot','turtle'].forEach(id=>{
+//   runPersonaImpact(id, 400, LIVE_RULES);
+// });
 

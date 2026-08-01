@@ -252,6 +252,11 @@ stakes; this tighter version keeps captures and positioning more consequential.
 - A player may only move their Soul into the Infinite — and may only capture
   the opponent's Soul — after that player's own/opponent's Body (respectively)
   has been captured.
+- This protection covers a Soul against ANY capture, including its own owner
+  accidentally landing another piece on it — a Soul can't be self-captured
+  until that same player's own Body has been captured, for the same reason
+  the opponent can't capture it early: the game shouldn't end via Soul loss
+  before Body's fate is decided, whether the loss was deliberate or a mistake.
 
 ---
 
