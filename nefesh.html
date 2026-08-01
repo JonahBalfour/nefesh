@@ -193,13 +193,31 @@
     .control-panel{ min-width:0; flex-basis:auto; width:100%; }
     .overlay-box{ max-width:calc(100vw - 32px); padding:24px 20px; }
   }
+
+  /* A phone held sideways is wide enough for the desktop side-by-side shape,
+     but far too short for it - stacking (the portrait rule above) would leave
+     most of the board scrolled off-screen. So a landscape phone gets its own
+     shape instead: title/subtitle hidden to reclaim vertical space, and the
+     board + a narrow always-visible sidebar sit side by side, both capped to
+     the viewport's height so nothing needs a page scroll to reach the dice. */
+  @media (max-height: 500px) and (orientation: landscape){
+    body{ padding:6px; }
+    h1.title, .subtitle{ display:none; }
+    .top-actions{ margin-bottom:6px; }
+    .app{ flex-direction:row; flex-wrap:nowrap; gap:8px; align-items:stretch; max-width:none; }
+    .board-panel{ min-width:0; flex:1 1 auto; width:auto; padding:6px; display:flex; align-items:center; justify-content:center; max-height:calc(100vh - 50px); }
+    #board-svg{ width:auto !important; height:100% !important; max-width:100%; max-height:calc(100vh - 62px); }
+    .control-panel{ min-width:150px; max-width:190px; flex:0 0 180px; gap:8px; overflow-y:auto; max-height:calc(100vh - 50px); }
+    .panel-box{ padding:8px 10px; }
+    .panel-title{ margin-bottom:6px; padding-bottom:4px; }
+  }
 </style>
 </head>
 <body>
 
 <h1 class="title">NEFESH</h1>
 <p class="subtitle">a prototype board for playtesting — click to place, move, and capture</p>
-<div style="text-align:center; margin-bottom:18px; display:flex; gap:10px; justify-content:center;">
+<div class="top-actions" style="text-align:center; margin-bottom:18px; display:flex; gap:10px; justify-content:center;">
   <button id="howto-btn" style="padding:9px 20px; font-size:13px;">How to Play</button>
   <button id="menu-btn" title="Menu" style="padding:9px 14px; font-size:16px; line-height:1;">&#9776;</button>
 </div>
