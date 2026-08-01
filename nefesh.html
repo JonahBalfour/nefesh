@@ -243,7 +243,7 @@
       </div>
       <div id="move-options" class="move-options"></div>
       <div class="row" style="margin-top:10px;">
-        <button id="pass-btn" disabled>Pass (no legal action)</button>
+        <button id="pass-btn" disabled>Declare Draw (no legal action)</button>
         <span id="turn-status" style="font-size:12px; color:var(--parchment-dim);"></span>
       </div>
     </div>
@@ -683,6 +683,18 @@ function hasAnyLegalAction(color){
   });
 }
 
+// Same idea as a stalemate in chess: extremely rare in practice (well under
+// 1% of games, per simulation), but when the player to move genuinely has no
+// legal placement or move, the game ends immediately as a draw rather than
+// just passing the turn along.
+function declareStalemateDraw(color){
+  state.winner = 'draw';
+  state.isDraw = true;
+  state.winReason = `${color==='white'?'White':'Black'} had no legal placement or move - the game is a draw, as in a stalemate.`;
+  log(`${color==='white'?'White':'Black'} has no legal action - the game is a draw.`);
+  render();
+}
+
 // ---------- actions ----------
 function placePiece(color, pieceId){
   const mover = currentMover();
@@ -1038,8 +1050,7 @@ function maybeBotTurn(){
     if(state.winner || currentMover()!==botColor) return;
     const choice = pickBotAction(botColor);
     if(!choice){
-      log(`${botPersona.name} (${botDifficulty.name}) has no legal action and passes.`);
-      finishAction(botColor);
+      declareStalemateDraw(botColor);
       return;
     }
     if(choice.type==='place') placePiece(botColor, choice.pieceId);
@@ -1526,8 +1537,7 @@ document.getElementById('roll-btn').addEventListener('click', ()=>{
 document.getElementById('pass-btn').addEventListener('click', ()=>{
   const mover = currentMover();
   if(!mover) return;
-  log(`${mover} has no legal action and passes.`);
-  finishAction(mover);
+  declareStalemateDraw(mover);
 });
 
 function populateOptionList(selectId, items, currentId){
