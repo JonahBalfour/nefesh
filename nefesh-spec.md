@@ -232,6 +232,11 @@ stakes; this tighter version keeps captures and positioning more consequential.
   onboard piece, every round.
 - Placement happens on a player's own Placement space (16 for Black, 18 for
   White).
+- If a player genuinely has no legal placement or move (every onboard piece's
+  only reachable space is blocked by the opponent's protected Soul, with
+  nothing left on the bench), the game ends immediately as a draw - the same
+  idea as a stalemate in chess. Checked via simulation: this comes up in well
+  under 1% of games, so it's rare rather than a real strategic factor.
 
 **Captures:**
 - Landing on any occupied space — including your own piece — captures
