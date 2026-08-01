@@ -175,6 +175,8 @@
   small.hint{color:#a89a86; font-size:11px;}
   .howto-tab-btn{background:#2c2018; border:1px solid #6e5a42;}
   .howto-tab-btn.active{background:var(--rust); border-color:#6e2f16;}
+  .menu-tab-btn{background:#2c2018; border:1px solid #6e5a42;}
+  .menu-tab-btn.active{background:var(--rust); border-color:#6e2f16;}
   #howto-content h3{font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold); font-size:14px; margin:18px 0 8px;}
   #howto-content h3:first-child{margin-top:0;}
   #howto-content p{margin:0 0 10px;}
@@ -197,8 +199,9 @@
 
 <h1 class="title">NEFESH</h1>
 <p class="subtitle">a prototype board for playtesting — click to place, move, and capture</p>
-<div style="text-align:center; margin-bottom:18px;">
+<div style="text-align:center; margin-bottom:18px; display:flex; gap:10px; justify-content:center;">
   <button id="howto-btn" style="padding:9px 20px; font-size:13px;">How to Play</button>
+  <button id="menu-btn" title="Menu" style="padding:9px 14px; font-size:16px; line-height:1;">&#9776;</button>
 </div>
 
 <div class="app">
@@ -230,56 +233,12 @@
     <div class="panel-box">
       <div class="panel-title">MATCH</div>
       <div id="match-summary" style="font-size:13px; margin-bottom:10px;"></div>
-      <button id="new-game-btn" style="padding:7px 16px; font-size:12px;">New Game…</button>
-      <div id="flip-board-row" style="margin-top:10px;">
+      <div id="body-status" style="font-size:12px; color:var(--parchment-dim); margin-bottom:10px;"></div>
+      <div id="flip-board-row">
         <button id="flip-board-btn" style="padding:6px 14px; font-size:12px;">Flip Board</button>
         <span style="font-size:11px; color:var(--parchment-dim); margin-left:8px;">Turn the board for the other player</span>
       </div>
       <div id="bot-thinking" style="font-size:12px; color:var(--gold); margin-top:8px; display:none;">Computer is thinking…</div>
-    </div>
-
-    <div class="panel-box">
-      <div class="panel-title">WHITE PIECES</div>
-      <div class="bench-list" id="white-pieces"></div>
-      <div class="row" style="margin-top:8px; font-size:12px;">
-        <span>Body captured: <b id="white-body-flag">no</b></span>
-      </div>
-    </div>
-
-    <div class="panel-box">
-      <div class="panel-title">BLACK PIECES</div>
-      <div class="bench-list" id="black-pieces"></div>
-      <div class="row" style="margin-top:8px; font-size:12px;">
-        <span>Body captured: <b id="black-body-flag">no</b></span>
-      </div>
-    </div>
-
-    <div class="panel-box">
-      <div class="panel-title">LOG</div>
-      <div id="last-game-note" style="display:none; font-size:11px; color:var(--gold); margin-bottom:8px;">
-        A previous game's log was auto-saved.
-        <button id="copy-lastgame-btn" style="padding:3px 8px; font-size:11px; margin-left:6px;">Copy it</button>
-      </div>
-      <div class="row" style="margin-bottom:6px; justify-content:flex-end;">
-        <button id="copy-log-btn" style="padding:4px 10px; font-size:11px;">Copy current log</button>
-      </div>
-      <textarea id="log-copy-area" readonly style="display:none; width:100%; height:90px; margin-bottom:8px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px; font-size:11px; padding:6px;"></textarea>
-      <div id="log"></div>
-    </div>
-
-    <div class="panel-box">
-      <details>
-        <summary>Designer notes / assumptions in this prototype</summary>
-        <p>A few judgment calls I made to get this playable — flag anything that's wrong and I'll adjust:</p>
-        <ul>
-          <li>The 4 central-ring spaces are modeled as a single set passed through once per lap (not twice), sitting between the two loops in the sequence. If Nefesh's real geometry passes through center twice per figure-8 lap, this needs revising.</li>
-          <li>Movement uses only the sum of both dice — d1 and d2 alone, and their difference, aren't usable as a move length. A piece's bonus is a flat add, always fully applied on top of that sum (not a range you choose from).</li>
-          <li>The 4 Race pieces (Creature, Dwarf, Man, Elf) start the game already on the board instead of on the bench — no placement needed for these. Only the 4 Person pieces (Mind, Will, Body, Soul) still need to be placed.</li>
-          <li>Placement can happen on your turn even after the dice are rolled (rules say placement must happen before the roll — simplified here so the turn structure stays simple; you can self-enforce the stricter timing at the table).</li>
-          <li>The Soul's Infinite entry requires landing on an exact target space; overshooting keeps it circling in the endgame zone until an exact roll lands it there.</li>
-          <li>A non-Soul piece that would complete a full circuit is captured automatically instead of completing the move.</li>
-        </ul>
-      </details>
     </div>
 
   </div>
@@ -329,6 +288,57 @@
       <button class="howto-tab-btn" data-tab="personas">Persona Guide</button>
     </div>
     <div id="howto-content" style="font-size:13.5px; line-height:1.65; color:var(--parchment);"></div>
+  </div>
+</div>
+
+<div class="overlay" id="menu-overlay">
+  <div class="overlay-box" style="max-width:600px; max-height:82vh; overflow-y:auto; text-align:left; padding:26px 30px;">
+    <div class="row" style="align-items:flex-start; margin-bottom:14px;">
+      <h2 style="margin:0;">Menu</h2>
+      <button id="menu-close-btn">Close</button>
+    </div>
+    <button id="menu-newgame-btn" style="width:100%; padding:10px; font-size:14px; margin-bottom:18px;">New Game…</button>
+    <div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+      <button class="menu-tab-btn" data-tab="log">Log</button>
+      <button class="menu-tab-btn" data-tab="pieces">Piece Reference</button>
+      <button class="menu-tab-btn" data-tab="notes">Designer Notes</button>
+    </div>
+
+    <div id="menu-tab-log">
+      <div id="last-game-note" style="display:none; font-size:11px; color:var(--gold); margin-bottom:8px;">
+        A previous game's log was auto-saved.
+        <button id="copy-lastgame-btn" style="padding:3px 8px; font-size:11px; margin-left:6px;">Copy it</button>
+      </div>
+      <div class="row" style="margin-bottom:6px; justify-content:flex-end;">
+        <button id="copy-log-btn" style="padding:4px 10px; font-size:11px;">Copy current log</button>
+      </div>
+      <textarea id="log-copy-area" readonly style="display:none; width:100%; height:90px; margin-bottom:8px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px; font-size:11px; padding:6px;"></textarea>
+      <div id="log" style="font-size:13.5px; line-height:1.65; color:var(--parchment);"></div>
+    </div>
+
+    <div id="menu-tab-pieces" style="display:none; font-size:13.5px; line-height:1.65; color:var(--parchment);">
+      <h3 style="font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold); font-size:14px; margin:0 0 8px;">PIECE BONUSES</h3>
+      <p style="margin:0 0 10px;">Every move is the dice sum plus the moving piece's flat bonus, always fully applied:</p>
+      <ul style="margin:0 0 14px; padding-left:20px;">
+        <li style="margin-bottom:6px;">Creature +0 &middot; Dwarf +1 &middot; Man +2 &middot; Elf +3 (Race pieces - forward only)</li>
+        <li>Mind +1 &middot; Will +2 &middot; Body +3 &middot; Soul no bonus, but wins by reaching the Infinite (Person pieces - forward or backward)</li>
+      </ul>
+      <h3 style="font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold); font-size:14px; margin:0 0 8px;">SOUL STATUS</h3>
+      <p id="soul-status-white" style="margin:0 0 6px;"></p>
+      <p id="soul-status-black" style="margin:0;"></p>
+    </div>
+
+    <div id="menu-tab-notes" style="display:none; font-size:13px; color:var(--parchment-dim); line-height:1.5;">
+      <p style="margin:0 0 10px;">A few judgment calls made to get this playable — flag anything that's wrong and it can be adjusted:</p>
+      <ul style="margin:0; padding-left:20px;">
+        <li style="margin-bottom:8px;">The 4 central-ring spaces are modeled as a single set passed through once per lap (not twice), sitting between the two loops in the sequence. If Nefesh's real geometry passes through center twice per figure-8 lap, this needs revising.</li>
+        <li style="margin-bottom:8px;">Movement uses only the sum of both dice — d1 and d2 alone, and their difference, aren't usable as a move length. A piece's bonus is a flat add, always fully applied on top of that sum (not a range you choose from).</li>
+        <li style="margin-bottom:8px;">The 4 Race pieces (Creature, Dwarf, Man, Elf) start the game already on the board instead of on the bench — no placement needed for these. Only the 4 Person pieces (Mind, Will, Body, Soul) still need to be placed.</li>
+        <li style="margin-bottom:8px;">Placement can happen on your turn even after the dice are rolled (rules say placement must happen before the roll — simplified here so the turn structure stays simple; you can self-enforce the stricter timing at the table).</li>
+        <li style="margin-bottom:8px;">The Soul's Infinite entry requires landing on an exact target space; overshooting keeps it circling in the endgame zone until an exact roll lands it there.</li>
+        <li>A non-Soul piece that would complete a full circuit is captured automatically instead of completing the move.</li>
+      </ul>
+    </div>
   </div>
 </div>
 
@@ -1037,10 +1047,9 @@ function render(){
   if(simulatingLookahead) return;
   renderBoard();
   renderControls();
-  renderBench('white');
-  renderBench('black');
-  document.getElementById('white-body-flag').textContent = state.bodyCaptured.white?'yes':'no';
-  document.getElementById('black-body-flag').textContent = state.bodyCaptured.black?'yes':'no';
+  document.getElementById('body-status').textContent =
+    `White Body captured: ${state.bodyCaptured.white?'yes':'no'} · Black Body captured: ${state.bodyCaptured.black?'yes':'no'}`;
+  updatePieceReference();
   const logDiv = document.getElementById('log');
   logDiv.innerHTML = state.log.map(l=>`<div>• ${l}</div>`).join('');
 
@@ -1353,37 +1362,22 @@ function renderBoard(){
   renderCapturedRow('black');
 }
 
-function renderBench(color){
-  const wrap = document.getElementById(color+'-pieces');
-  wrap.innerHTML='';
-  const mover = currentMover();
-  PIECE_DEFS.forEach(def=>{
-    const p = state.pieces[color][def.id];
-    // Bench pieces sit in the on-board tray (renderBenchTray) and captured
-    // pieces sit loose on the board (renderCapturedRow) - this panel now only
-    // reflects onboard pieces, since it's the one place still showing info
-    // that isn't visible on the board itself (bonus values, the Soul's
-    // special status text).
-    if(p.status!=='onboard') return;
-    const btn = document.createElement('div');
-    btn.className='piece-btn onboard';
-    if(state.selected && state.selected.color===color && state.selected.pieceId===def.id) btn.classList.add('selected');
-    const bonusLabel = def.id==='soul' ? '∞' : ('+'+def.bonus);
-    let statusText = '';
-    if(def.id==='soul' && p.completedCircuit){
+// Soul status is the one piece of state that isn't visible just by looking at
+// the board (the board shows position, not progress-toward-the-Infinite), so
+// it gets a line in the menu's Piece Reference tab whenever it's relevant.
+function updatePieceReference(){
+  ['white','black'].forEach(color=>{
+    const p = state.pieces[color].soul;
+    const el = document.getElementById('soul-status-'+color);
+    const label = color==='white' ? 'White' : 'Black';
+    if(p.status==='onboard' && p.completedCircuit){
       const remaining = TRACK_LEN - p.progress;
-      statusText = state.bodyCaptured[color]
-        ? `needs exactly ${remaining>0?'+':''}${remaining} to win`
-        : `own Body not yet captured - can't enter Infinite yet`;
+      el.textContent = state.bodyCaptured[color]
+        ? `${label}'s Soul has completed its circuit and needs exactly ${remaining>0?'+':''}${remaining} to win.`
+        : `${label}'s Soul has completed its circuit, but ${label}'s own Body isn't captured yet - it can't enter the Infinite until then.`;
+    } else {
+      el.textContent = '';
     }
-    btn.innerHTML = `<div class="abbr">${def.abbr}</div><div>${def.label}</div><div>${bonusLabel}</div><div style="opacity:0.7;">${statusText}</div>`;
-    btn.addEventListener('click', ()=>{
-      if(mover!==color || state.winner || !state.dice) return;
-      const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
-      state.selected = isSel? null : {color, pieceId:def.id};
-      render();
-    });
-    wrap.appendChild(btn);
   });
 }
 
@@ -1569,7 +1563,10 @@ function updateMatchSummary(){
   }
 }
 
-document.getElementById('new-game-btn').addEventListener('click', openSetupOverlay);
+document.getElementById('menu-newgame-btn').addEventListener('click', ()=>{
+  closeMenuOverlay();
+  openSetupOverlay();
+});
 document.getElementById('setup-close-btn').addEventListener('click', closeSetupOverlay);
 document.getElementById('reset-btn').addEventListener('click', openSetupOverlay);
 
@@ -1741,6 +1738,28 @@ document.getElementById('howto-btn').addEventListener('click', ()=>{
 document.getElementById('howto-close-btn').addEventListener('click', ()=>{
   document.getElementById('howto-overlay').classList.remove('show');
 });
+
+// ---------- secondary menu (log, piece reference, designer notes) ----------
+function showMenuTab(tabId){
+  document.querySelectorAll('.menu-tab-btn').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.tab===tabId);
+  });
+  ['log','pieces','notes'].forEach(id=>{
+    document.getElementById('menu-tab-'+id).style.display = id===tabId ? 'block' : 'none';
+  });
+}
+document.querySelectorAll('.menu-tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>showMenuTab(btn.dataset.tab));
+});
+function openMenuOverlay(){
+  showMenuTab('log');
+  document.getElementById('menu-overlay').classList.add('show');
+}
+function closeMenuOverlay(){
+  document.getElementById('menu-overlay').classList.remove('show');
+}
+document.getElementById('menu-btn').addEventListener('click', openMenuOverlay);
+document.getElementById('menu-close-btn').addEventListener('click', closeMenuOverlay);
 
 render();
 openSetupOverlay(); // greet the player with the setup screen before their first game
