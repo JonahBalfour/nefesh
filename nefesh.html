@@ -937,10 +937,14 @@ const PERSONAS = [
   {id:'zealot',     name:'Zealot',     blurb:'Sacrifices its own Body on purpose once its Soul is moving, to free its own path to the Infinite early.'},
   {id:'turtle',     name:'Turtle',     blurb:"Avoids nearly all risk - takes a clear win when it sees one, but won't chase a risky capture."},
 ];
+// All three tiers now run the same MCTS search - difficulty is purely how
+// many simulations it runs per move before committing (see mctsChooseAction
+// above). Iteration counts tuned for a live opponent: strong enough to be a
+// real search, capped so a move never takes more than roughly a second.
 const DIFFICULTIES = [
-  {id:'easy',   name:'Easy',   strategy:'random',    blurb:'Moves at random - play style has no effect at this level.'},
-  {id:'normal', name:'Normal', strategy:'greedy',    blurb:'Reacts to the board, one move at a time.'},
-  {id:'hard',   name:'Hard',   strategy:'lookahead', blurb:'Plans a move ahead before committing - the toughest challenge.'},
+  {id:'easy',   name:'Easy',   iterations:15,  blurb:'A light search each turn - beatable, but no longer just guessing.'},
+  {id:'normal', name:'Normal', iterations:60,  blurb:'A real search each turn - a solid, well-rounded challenge.'},
+  {id:'hard',   name:'Hard',   iterations:180, blurb:'A deep search each turn - the toughest challenge.'},
 ];
 let botPersona = PERSONAS.find(p=>p.id==='balanced');
 let botDifficulty = DIFFICULTIES.find(d=>d.id==='normal');
@@ -1027,20 +1031,13 @@ function bestScored(color, options){
   scored.sort((a,b)=>b.sc-a.sc);
   return scored[0].o;
 }
-function pickRandomOption(options){
-  if(options.length===0) return null;
-  return options[Math.floor(Math.random()*options.length)];
-}
 function applyBotChoice(color, choice){
   if(choice.type==='place') placePiece(color, choice.pieceId);
   else performMove(color, choice.pieceId, choice.move);
 }
 
-// ---- lookahead ('Hard' difficulty): simulate my move, then the opponent's
-// best reply within the SAME round (dice are shared per round, so that reply
-// is genuinely knowable, not a guess), then evaluate the resulting board.
 // Runs entirely on a cloned state - render() is disabled meanwhile (see
-// simulatingLookahead above) so the real board never flickers through
+// simulatingBot above) so the real board never flickers through
 // hypothetical positions while the bot "thinks."
 function cloneGameState(s){
   const cloneOne = obj=>{ const out={}; for(const id in obj) out[id]={...obj[id]}; return out; };
@@ -1052,65 +1049,198 @@ function cloneGameState(s){
     pieces:{ white:cloneOne(s.pieces.white), black:cloneOne(s.pieces.black) },
   };
 }
-function evaluateBoard(s, color){
-  const oppColor = color==='white'?'black':'white';
-  const profile = SCORE_PROFILES[BOT_PROFILE[color]] || SCORE_PROFILES.balanced;
-  let score = 0;
-  PIECE_DEFS.forEach(d=>{
-    const val = PIECE_VALUE[d.id] || 20;
-    const categoryWeight = d.category==='race' ? profile.raceWeight : profile.personWeight;
-    const mine = s.pieces[color][d.id];
-    const theirs = s.pieces[oppColor][d.id];
-    const ownGuard = d.id==='body' ? profile.ownBodyGuard : 1;
-    const oppHunt = d.id==='body' ? profile.bodyHunt : 1;
-    if(mine.status!=='captured') score += val*profile.selfCapture*ownGuard + (mine.status==='onboard' ? mine.progress*0.3*profile.progress*categoryWeight : 0);
-    if(theirs.status!=='captured') score -= val*profile.capture*oppHunt + (theirs.status==='onboard' ? theirs.progress*0.3 : 0);
-  });
-  const mySoul = s.pieces[color].soul;
-  if(mySoul.status==='onboard'){
-    const remaining = Math.abs(TRACK_LEN - mySoul.progress);
-    score += Math.max(0, 40-remaining) * profile.soulUrgency;
-  }
-  if(s.winner===color) score += 5000000;
-  else if(s.winner && s.winner!==color && s.winner!=='draw') score -= 5000000;
-  return score;
+
+// ---------- MCTS computer opponent ----------
+// Same engine validated in nefesh-mcts.js's offline rule-search work,
+// ported to run directly against this file's own game functions (instead
+// of a separate pure-state module) so it can drive live in-game moves.
+// Two node types: decision nodes (state.dice set, UCT selection) and
+// chance nodes (state.dice null, a dice roll happens - expanded by
+// sampling an outcome rather than choosing one).
+const MCTS_EXPLORATION_C = Math.SQRT2;
+const MCTS_MAX_ROLLOUT_PLIES = 200;
+// How strongly rollouts favor each color's own scoreOption ranking over
+// picking uniformly at random - this is what lets personas "flavor" MCTS
+// play. Ranger (the balanced profile) has every SCORE_PROFILES weight at
+// 1.0, so it ends up the de facto neutral option without needing special
+// casing here - it's biased by the same scoring everyone else uses, just
+// with no style skew applied on top of it.
+const MCTS_ROLLOUT_BIAS = 0.65;
+
+function mctsActionKey(a){
+  return a.type==='place' ? `place:${a.pieceId}` : `move:${a.pieceId}:${a.move.delta}:${a.move.kind}`;
 }
-function pickLookahead(color, options){
-  if(options.length===0) return null;
-  const oppColor = color==='white'?'black':'white';
-  const realState = state;
-  let bestOpt=null, bestScore=-Infinity;
-
-  simulatingLookahead = true;
-  options.forEach(opt=>{
-    state = cloneGameState(realState);
-    applyBotChoice(color, opt); // placePiece/performMove auto-advance the turn via finishAction
-
-    let score;
-    if(state.winner){
-      score = state.winner===color ? 5000000 : (state.winner==='draw' ? 0 : -5000000);
-    } else if(currentMover()===oppColor && state.dice){
-      const oppChoice = bestScored(oppColor, collectBotOptions(oppColor));
-      if(oppChoice) applyBotChoice(oppColor, oppChoice);
-      score = evaluateBoard(state, color);
-    } else {
-      score = evaluateBoard(state, color); // round rolled over - next dice unknown, stop here
+// currentMover()/collectBotOptions() read the module-global `state` rather
+// than taking one as a parameter - these wrappers give MCTS a pure-looking
+// interface by pointing `state` at an arbitrary snapshot just long enough
+// to ask the question, then restoring it (same trick pickLookahead already
+// used above, just factored out since MCTS needs it many times per move).
+function mctsCurrentMoverOf(s){
+  const real = state;
+  try{ state = s; return currentMover(); }
+  finally{ state = real; }
+}
+function mctsActionsOf(s, color){
+  const real = state;
+  try{ state = s; return collectBotOptions(color).map(a=>({...a, color})); }
+  finally{ state = real; }
+}
+function mctsApply(s, action){
+  const real = state;
+  try{
+    state = cloneGameState(s);
+    applyBotChoice(action.color, action); // placePiece/performMove auto-advance the turn via finishAction
+    return state;
+  } finally { state = real; }
+}
+function mctsSampleDiceRoll(){
+  return {d1:1+Math.floor(Math.random()*6), d2:1+Math.floor(Math.random()*6)};
+}
+function mctsApplyDiceRoll(s, roll){
+  const clone = cloneGameState(s);
+  clone.dice = {...roll};
+  return clone;
+}
+// Rollout action picking: ranks the legal options by this color's own
+// scoreOption (the exact same scoring the greedy/lookahead bots use for
+// their personas) and samples with a geometric bias toward the top of that
+// ranking, instead of picking uniformly at random. Must run under the same
+// state-swap window as scoreOption/collectBotOptions, since those read the
+// module-global `state` too.
+function mctsPickRolloutAction(s, color, actions){
+  if(actions.length===1) return actions[0];
+  const real = state;
+  try{
+    state = s;
+    const ranked = [...actions].sort((a,b)=>scoreOption(color,b)-scoreOption(color,a));
+    const weights = ranked.map((_,i)=>Math.pow(MCTS_ROLLOUT_BIAS,i));
+    const total = weights.reduce((a,b)=>a+b,0);
+    let r = Math.random()*total;
+    for(let i=0;i<ranked.length;i++){ r-=weights[i]; if(r<=0) return ranked[i]; }
+    return ranked[ranked.length-1];
+  } finally { state = real; }
+}
+// Rollout: plays from `s` to a terminal state (or until maxPlies is hit, in
+// which case the game is treated as undecided), using the persona-weighted
+// rollout policy above for both sides - so BOTH players' configured
+// personas shape the rollout, not just the bot's own.
+function mctsRollout(s, maxPlies){
+  let cur = s;
+  let plies = 0;
+  while(!cur.winner && plies<maxPlies){
+    if(cur.dice===null){
+      cur = mctsApplyDiceRoll(cur, mctsSampleDiceRoll());
+      continue;
     }
+    const mover = mctsCurrentMoverOf(cur);
+    const actions = mctsActionsOf(cur, mover);
+    if(actions.length===0){
+      cur = cloneGameState(cur);
+      cur.winner = 'draw'; cur.isDraw = true;
+      break;
+    }
+    const pick = mctsPickRolloutAction(cur, mover, actions);
+    cur = mctsApply(cur, pick);
+    plies++;
+  }
+  return cur;
+}
+function mctsCreateNode(s, parent, incomingAction){
+  const node = {state:s, parent, incomingAction, children:new Map(), visits:0, value:0};
+  node.isTerminal = !!s.winner;
+  node.isChance = !node.isTerminal && s.dice===null;
+  if(!node.isTerminal && !node.isChance){
+    node.mover = mctsCurrentMoverOf(s);
+    node.untriedActions = mctsActionsOf(s, node.mover);
+  }
+  return node;
+}
+function mctsUctScore(child, parentVisits){
+  if(child.visits===0) return Infinity;
+  return (child.value/child.visits) + MCTS_EXPLORATION_C*Math.sqrt(Math.log(parentVisits)/child.visits);
+}
+function mctsSelectBestChild(node){
+  let best=null, bestScore=-Infinity;
+  for(const child of node.children.values()){
+    const sc = mctsUctScore(child, node.visits);
+    if(sc>bestScore){ bestScore=sc; best=child; }
+  }
+  return best;
+}
+function mctsTreePolicy(root){
+  let node = root;
+  const path = [node];
+  while(!node.isTerminal){
+    if(node.isChance){
+      const roll = mctsSampleDiceRoll();
+      const key = `${roll.d1},${roll.d2}`;
+      let child = node.children.get(key);
+      if(!child){
+        child = mctsCreateNode(mctsApplyDiceRoll(node.state, roll), node, roll);
+        node.children.set(key, child);
+        path.push(child);
+        return path;
+      }
+      node = child; path.push(node); continue;
+    }
+    if(node.untriedActions.length>0){
+      const idx = Math.floor(Math.random()*node.untriedActions.length);
+      const action = node.untriedActions.splice(idx,1)[0];
+      const child = mctsCreateNode(mctsApply(node.state, action), node, action);
+      node.children.set(mctsActionKey(action), child);
+      path.push(child);
+      return path;
+    }
+    if(node.children.size===0) break; // dead end - shouldn't happen, but don't loop forever
+    node = mctsSelectBestChild(node);
+    path.push(node);
+  }
+  return path;
+}
+function mctsRewardFor(terminalState, color){
+  const w = terminalState.winner;
+  if(w===color) return 1;
+  if(w==null || w==='draw') return 0.5;
+  return 0;
+}
+function mctsBackpropagate(path, terminalState){
+  for(let i=path.length-1; i>=0; i--){
+    const node = path[i];
+    node.visits++;
+    if(i===0) continue;
+    const parent = path[i-1];
+    if(parent.isChance) continue; // no mover chose this transition - nothing to score it against
+    node.value += mctsRewardFor(terminalState, parent.mover);
+  }
+}
+// Entry point: runs `iterations` playouts from the REAL current state (not
+// a clone - MCTS never mutates it directly, everything happens on clones
+// via mctsApply/mctsApplyDiceRoll) and returns the most-visited action.
+function mctsChooseAction(color, iterations){
+  const root = mctsCreateNode(state, null, null);
+  if(root.isTerminal || root.isChance || root.untriedActions.length===0) return null;
 
-    if(score>bestScore){ bestScore=score; bestOpt=opt; }
-  });
-  state = realState;
-  simulatingLookahead = false;
+  simulatingBot = true;
+  for(let i=0;i<iterations;i++){
+    const path = mctsTreePolicy(root);
+    const leaf = path[path.length-1];
+    const terminal = leaf.isTerminal ? leaf.state : mctsRollout(leaf.state, MCTS_MAX_ROLLOUT_PLIES);
+    mctsBackpropagate(path, terminal);
+  }
+  simulatingBot = false;
 
-  return bestOpt;
+  let bestChild=null, bestVisits=-1;
+  for(const child of root.children.values()){
+    if(child.visits>bestVisits){ bestVisits=child.visits; bestChild=child; }
+  }
+  return bestChild ? bestChild.incomingAction : null;
 }
 
 function pickBotAction(color){
   const options = collectBotOptions(color);
   if(options.length===0) return null;
-  if(botDifficulty.strategy==='random') return pickRandomOption(options);
-  if(botDifficulty.strategy==='lookahead') return pickLookahead(color, options);
-  return bestScored(color, options);
+  const action = mctsChooseAction(color, botDifficulty.iterations);
+  return action || bestScored(color, options); // fallback safety net - shouldn't normally trigger
 }
 
 function maybeBotTurn(){
@@ -1165,14 +1295,14 @@ function el(tag,attrs){
   return e;
 }
 
-let simulatingLookahead = false; // true while the bot is exploring hypothetical moves on a cloned state - render() is a no-op then, so the real board never flickers through fake positions
+let simulatingBot = false; // true while the bot is exploring hypothetical moves on a cloned state - render() is a no-op then, so the real board never flickers through fake positions
 
 // Last known screen position per piece (keyed "color-pieceId"), used to FLIP-animate
 // pieces sliding to their new spot instead of popping there on every re-render.
 let piecePositions = {};
 
 function render(){
-  if(simulatingLookahead) return;
+  if(simulatingBot) return;
   renderBoard();
   renderControls();
   document.getElementById('body-status').textContent =
@@ -1846,10 +1976,11 @@ const HOWTO_CONTENT = {
     <h3>TURTLE (stall)</h3>
     <p>Avoids nearly all risk, but still takes a clear win when one's obviously available. It won't blunder into bad trades, so patient, genuinely good moves beat it — just don't let its slow pace lull you into being careless yourself.</p>
     <h3>DIFFICULTY: WHAT ACTUALLY CHANGES</h3>
+    <p>All three levels use the same search - the difference is purely how much it thinks before committing to a move.</p>
     <ul>
-      <li><b>Easy</b> — moves completely at random. Good for practicing the rules and mechanics without being punished for mistakes.</li>
-      <li><b>Normal</b> — reacts to the board as it stands, but doesn't think ahead. Simple two-move traps (bait now, capture next turn) often work.</li>
-      <li><b>Hard</b> — thinks one move ahead, including guessing your best response. Traps that only work if it can't see the follow-up won't work anymore — you'll need to actually out-maneuver it, not just outsmart it in the moment.</li>
+      <li><b>Easy</b> — a light search. Still weighs its options, but shallow enough to miss real threats. Good for practicing the rules and mechanics without a harsh punishment for mistakes.</li>
+      <li><b>Normal</b> — a real search each turn. Simple two-move traps (bait now, capture next turn) are unlikely to work anymore.</li>
+      <li><b>Hard</b> — a deep search each turn, weighing many more possible lines before committing. You'll need to actually out-maneuver it, not just outsmart it in the moment.</li>
     </ul>
   `,
 };

@@ -962,11 +962,16 @@ if(require.main === module){
 
 module.exports = {
   // constants / data
-  PIECE_DEFS, TRACK_LEN, START_MASTER, LIVE_RULES, RULE_CANDIDATE_1,
+  PIECE_DEFS, TRACK_LEN, START_MASTER, LIVE_RULES, RULE_CANDIDATE_1, SCORE_PROFILES,
   // core rules (operate on the module-global `state` - see resetState/cloneState)
   getDef, resetState, freshPieces, pathToMaster, currentMover,
   occupantsAtMaster, getLegalMoves, hasAnyLegalAction, canPlaceAnyBenchPiece,
   placePiece, performMove, finishAction, collectPlaceOptions, collectMoveOptions,
+  // persona scoring - reads/writes the module-global BOT_PROFILE and state,
+  // same swap-state convention as everything else here
+  scoreOption,
+  getBotProfile(){ return BOT_PROFILE; },
+  setBotProfile(p){ BOT_PROFILE = p; },
   // pure wrappers for tree search (MCTS) - the §2 interface
   cloneState, isTerminal, getWinner, getWinType, getLegalActions, applyMove,
   enumerateDiceOutcomes, sampleDiceRoll, applyDiceRoll,

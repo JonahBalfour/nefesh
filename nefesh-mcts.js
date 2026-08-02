@@ -108,9 +108,32 @@ function treePolicy(root){
   return path;
 }
 
-// Uniform-random playout from `state` to a terminal state (or until
-// maxPlies is hit, in which case the game is treated as undecided).
-function rollout(state, maxPlies){
+// Rollout action picking: with rolloutBias===0 (the default, matching the
+// original "start dumb" research engine) this is a plain uniform-random
+// choice. With rolloutBias>0, it instead ranks the legal options by this
+// color's own scoreOption (whatever nefesh-sim.js's BOT_PROFILE has set for
+// that color) and samples with a geometric bias toward the top of that
+// ranking - the same mechanism nefesh.html now uses to let personas flavor
+// live MCTS play. Must run under the sim's state-swap window, since
+// scoreOption/collectPlaceOptions/collectMoveOptions read its module-global
+// `state` rather than taking one as a parameter.
+function pickRolloutAction(s, color, actions, rolloutBias){
+  if(!rolloutBias || actions.length===1) return actions[Math.floor(Math.random()*actions.length)];
+  const real = sim.getState();
+  try{
+    sim.setState(s);
+    const ranked = [...actions].sort((a,b)=>sim.scoreOption(color,b)-sim.scoreOption(color,a));
+    const weights = ranked.map((_,i)=>Math.pow(rolloutBias,i));
+    const total = weights.reduce((a,b)=>a+b,0);
+    let r = Math.random()*total;
+    for(let i=0;i<ranked.length;i++){ r-=weights[i]; if(r<=0) return ranked[i]; }
+    return ranked[ranked.length-1];
+  } finally { sim.setState(real); }
+}
+
+// Playout from `state` to a terminal state (or until maxPlies is hit, in
+// which case the game is treated as undecided).
+function rollout(state, maxPlies, rolloutBias){
   let s = state;
   let plies = 0;
   while(!sim.isTerminal(s) && plies<maxPlies){
@@ -127,7 +150,7 @@ function rollout(state, maxPlies){
       s.winner = 'draw'; s.isDraw = true; s.winType = null;
       break;
     }
-    const pick = actions[Math.floor(Math.random()*actions.length)];
+    const pick = pickRolloutAction(s, mover, actions, rolloutBias);
     s = sim.applyMove(s, pick);
     plies++;
   }
@@ -157,7 +180,10 @@ function backpropagate(path, terminalState){
 // Runs MCTS from `rootState` (must be a decision state - dice already
 // rolled, not a chance node) and returns the action judged best after
 // `iterations` playouts, or null if there's no legal action at all.
-function mctsChooseAction(rootState, {iterations=200, maxRolloutPlies=300}={}){
+// rolloutBias: 0 (default) = plain uniform-random rollouts, matching the
+// original research engine; >0 = persona-weighted rollouts via
+// sim.scoreOption/sim.getBotProfile (set sim.setBotProfile before calling).
+function mctsChooseAction(rootState, {iterations=200, maxRolloutPlies=300, rolloutBias=0}={}){
   const root = new Node(rootState, null, null);
   if(root.isTerminal) return null;
   if(root.isChance){
@@ -169,7 +195,7 @@ function mctsChooseAction(rootState, {iterations=200, maxRolloutPlies=300}={}){
   for(let i=0;i<iterations;i++){
     const path = treePolicy(root);
     const leaf = path[path.length-1];
-    const terminal = leaf.isTerminal ? leaf.state : rollout(leaf.state, maxRolloutPlies);
+    const terminal = leaf.isTerminal ? leaf.state : rollout(leaf.state, maxRolloutPlies, rolloutBias);
     backpropagate(path, terminal);
   }
 
@@ -195,4 +221,4 @@ function mctsChooseAction(rootState, {iterations=200, maxRolloutPlies=300}={}){
   return bestChild.incomingAction;
 }
 
-module.exports = { mctsChooseAction, rollout, rewardFor, getCurrentMoverPure, actionKey, Node };
+module.exports = { mctsChooseAction, rollout, pickRolloutAction, rewardFor, getCurrentMoverPure, actionKey, Node };
