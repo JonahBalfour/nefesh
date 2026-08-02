@@ -650,6 +650,13 @@ function getSfxLimiter(){
 }
 function playClip(name, gainValue){
   if(!soundEnabled) return;
+  // The MCTS bot reuses performMove/placePiece to explore hundreds of
+  // hypothetical moves per turn on a cloned state (simulatingBot suppresses
+  // render() for the same reason) - without this guard every one of those
+  // imaginary moves fired a real sound too, all overlapping within
+  // milliseconds of each other during the bot's "thinking" and reading as
+  // harsh/distorted noise.
+  if(simulatingBot) return;
   const ctx = getSfxCtx();
   if(!ctx) return;
   if(ctx.state==='suspended') ctx.resume();
