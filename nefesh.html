@@ -23,12 +23,33 @@
     --wood-light:#4d3826;
     --rust:#a8471f;
     --rust-light:#c25a2c;
+    --rust-dark:#7a3115;
     --gold:#c9973f;
     --gold-bright:#e0b25a;
+    --gold-text:#e6bd6c;
     --cream:#efe3c8;
     --white-piece:#f4ecd8;
     --black-piece:#141110;
     --danger:#8a2e1f;
+
+    /* Spacing scale - everything below snaps to this 4/8pt rhythm. */
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+    --sp-6:24px; --sp-7:32px; --sp-8:40px; --sp-9:48px;
+
+    /* Type scale. */
+    --fs-xs:12px; --fs-sm:13px; --fs-base:14px; --fs-md:15px;
+    --fs-lg:18px; --fs-xl:24px; --fs-2xl:32px; --fs-display:42px;
+
+    --radius-sm:8px; --radius-md:12px; --radius-lg:16px; --radius-pill:999px;
+
+    /* Elevation - layered shadows read as "lifted off the table". */
+    --shadow-1:0 1px 2px rgba(0,0,0,0.35);
+    --shadow-2:0 6px 16px rgba(0,0,0,0.38);
+    --shadow-3:0 18px 44px rgba(0,0,0,0.5);
+    --bevel-top:inset 0 1px 0 rgba(255,255,255,0.08);
+    --bevel-bottom:inset 0 -1px 0 rgba(0,0,0,0.25);
+
+    --ease:cubic-bezier(.2,.7,.3,1);
   }
   *{box-sizing:border-box;}
   body{
@@ -39,12 +60,14 @@
       linear-gradient(160deg, var(--wood-dark), var(--wood) 60%, var(--wood-dark));
     font-family:'Spectral',serif;
     color:var(--cream);
-    padding:22px;
+    padding:var(--sp-6);
   }
+  ::selection{ background:var(--gold); color:var(--ink); }
+  :focus-visible{ outline:2px solid var(--gold-bright); outline-offset:2px; border-radius:4px; }
   h1.title{
     font-family:'Rye',serif;
     text-align:center;
-    font-size:42px;
+    font-size:var(--fs-display);
     letter-spacing:4px;
     color:var(--gold-bright);
     margin:0 0 2px 0;
@@ -54,13 +77,13 @@
     text-align:center;
     font-style:italic;
     color:var(--parchment-dim);
-    margin:0 0 20px 0;
-    font-size:14px;
+    margin:0 0 var(--sp-5) 0;
+    font-size:var(--fs-base);
     letter-spacing:1px;
   }
   .app{
     display:flex;
-    gap:22px;
+    gap:var(--sp-6);
     max-width:1680px;
     margin:0 auto;
     align-items:flex-start;
@@ -71,9 +94,9 @@
     min-width:560px;
     background:linear-gradient(180deg,var(--wood-light),var(--wood));
     border:1px solid #5c422c;
-    border-radius:10px;
-    padding:14px;
-    box-shadow:0 10px 30px rgba(0,0,0,0.4) inset, 0 4px 14px rgba(0,0,0,0.3);
+    border-radius:var(--radius-lg);
+    padding:var(--sp-4);
+    box-shadow:0 10px 30px rgba(0,0,0,0.4) inset, var(--shadow-3);
   }
   .control-panel{
     flex:0 1 340px;
@@ -81,69 +104,121 @@
     max-width:340px;
     display:flex;
     flex-direction:column;
-    gap:14px;
+    gap:var(--sp-4);
   }
   .panel-box{
     background:linear-gradient(180deg,var(--wood-light),var(--wood));
     border:1px solid #5c422c;
-    border-radius:10px;
-    padding:14px 16px;
+    border-radius:var(--radius-md);
+    padding:var(--sp-4) var(--sp-5);
+    box-shadow:var(--shadow-2), var(--bevel-top);
   }
   .panel-title{
     font-family:'Spectral SC',serif;
     letter-spacing:2px;
-    font-size:13px;
-    color:var(--gold);
-    margin:0 0 10px 0;
+    font-size:var(--fs-sm);
+    color:var(--gold-text);
+    margin:0 0 var(--sp-3) 0;
     border-bottom:1px solid #5c422c;
-    padding-bottom:6px;
+    padding-bottom:var(--sp-2);
   }
-  .row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .row{display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3);}
   .pill{
     display:inline-block;
-    padding:4px 12px;
-    border-radius:20px;
-    font-size:13px;
+    padding:5px 14px;
+    border-radius:var(--radius-pill);
+    font-size:var(--fs-sm);
     font-weight:600;
     border:1px solid var(--gold);
+    box-shadow:var(--shadow-1);
   }
   .pill.white{background:var(--white-piece); color:var(--ink);}
   .pill.black{background:var(--black-piece); color:var(--cream); border-color:#555;}
+
+  /* --- Buttons: a real hierarchy instead of one style for everything. ---
+     .btn-primary  - the one action you take almost every turn (Roll Dice)
+     .btn-secondary - top-level navigation / commitments (How to Play, Menu, New Game, Start Game)
+     button (bare)  - tertiary/utility default (Close, tabs, Flip Board, Copy...) */
   button{
     font-family:'Spectral',serif;
     font-weight:600;
-    background:var(--rust);
+    background:linear-gradient(180deg,#332419,#241a12);
     color:var(--cream);
-    border:1px solid #6e2f16;
-    border-radius:6px;
-    padding:8px 14px;
+    border:1px solid #6e5a42;
+    border-radius:var(--radius-sm);
+    padding:10px var(--sp-4);
+    min-height:40px;
     cursor:pointer;
-    font-size:13px;
-    letter-spacing:0.4px;
-    transition:background 0.15s, transform 0.1s;
+    font-size:var(--fs-sm);
+    letter-spacing:0.3px;
+    box-shadow:var(--shadow-1), var(--bevel-top);
+    transition:background 0.15s var(--ease), border-color 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
   }
-  button:hover:not(:disabled){background:var(--rust-light);}
-  button:active:not(:disabled){transform:translateY(1px);}
-  button:disabled{background:#5a4a3c; color:#93867a; cursor:not-allowed; border-color:#4a3c30;}
-  .dice-row{display:flex; gap:10px; align-items:center; margin:8px 0;}
+  button:hover:not(:disabled){ border-color:#8a7157; transform:translateY(-1px); box-shadow:var(--shadow-2), var(--bevel-top); }
+  button:active:not(:disabled){ transform:translateY(1px); box-shadow:var(--shadow-1); }
+  button:disabled{background:#5a4a3c; color:#93867a; cursor:not-allowed; border-color:#4a3c30; box-shadow:none;}
+
+  .btn-secondary{
+    background:linear-gradient(180deg,var(--rust-light),var(--rust));
+    border:1px solid var(--rust-dark);
+    min-height:44px;
+  }
+  .btn-secondary:hover:not(:disabled){ background:linear-gradient(180deg,#d3673a,var(--rust-light)); border-color:#8a3d1e; }
+
+  .btn-primary{
+    background:linear-gradient(180deg,var(--gold-bright),var(--gold));
+    color:var(--ink);
+    border:1px solid #8a6425;
+    font-weight:700;
+    font-size:var(--fs-base);
+    padding:11px var(--sp-6);
+    min-height:44px;
+    box-shadow:0 0 0 1px rgba(224,178,90,0.25), var(--shadow-2), var(--bevel-top);
+  }
+  .btn-primary:hover:not(:disabled){
+    background:linear-gradient(180deg,#eec178,var(--gold-bright));
+    box-shadow:0 0 0 1px rgba(224,178,90,0.4), var(--shadow-3), var(--bevel-top);
+  }
+  .btn-primary:disabled{ background:#5a4a3c; color:#93867a; box-shadow:none; }
+
+  .btn-icon{
+    width:44px; height:44px; padding:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:18px; line-height:1;
+  }
+
+  .btn-sm{ min-height:32px; padding:6px var(--sp-3); font-size:var(--fs-xs); }
+
+  .select-field{
+    width:100%; min-height:40px; padding:8px var(--sp-3);
+    font-family:'Spectral',serif; font-size:var(--fs-sm);
+    background:#2c2018; color:var(--cream);
+    border:1px solid var(--gold); border-radius:var(--radius-sm);
+    box-shadow:var(--shadow-1), var(--bevel-top);
+    transition:border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  }
+  .select-field:hover{ border-color:var(--gold-bright); }
+  .select-field:focus-visible{ outline:2px solid var(--gold-bright); outline-offset:1px; }
+
+  .dice-row{display:flex; gap:var(--sp-3); align-items:center; margin:var(--sp-2) 0;}
   .die{
-    width:42px;height:42px;border-radius:8px;
-    background:var(--parchment); color:var(--ink);
+    width:44px;height:44px;border-radius:var(--radius-sm);
+    background:linear-gradient(155deg,#fbf5e6,var(--parchment)); color:var(--ink);
     display:flex; align-items:center; justify-content:center;
     font-size:20px; font-weight:700; border:1px solid #8a7757;
-    box-shadow:0 2px 4px rgba(0,0,0,0.4);
+    box-shadow:0 2px 4px rgba(0,0,0,0.4), var(--bevel-top);
   }
-  .move-options{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
+  .move-options{display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-2);}
   .move-chip{
     background:#2c2018; border:1px solid var(--gold); color:var(--cream);
-    border-radius:5px; padding:3px 8px; font-size:12px;
+    border-radius:var(--radius-sm); padding:4px 10px; font-size:var(--fs-xs);
   }
-  .bench-section{margin-bottom:8px;}
-  .bench-list{display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;}
+  .bench-section{margin-bottom:var(--sp-2);}
+  .bench-list{display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-2);}
   .piece-btn{
     display:flex; flex-direction:column; align-items:center;
-    width:52px; padding:5px 2px;
-    border-radius:6px; border:1px solid #6e5a42;
+    width:52px; padding:6px 2px;
+    border-radius:var(--radius-sm); border:1px solid #6e5a42;
     background:#2c2018; color:var(--cream);
     cursor:pointer; font-size:10px; line-height:1.2;
   }
@@ -154,51 +229,59 @@
   .piece-btn:disabled, .piece-btn.disabled{opacity:0.4; cursor:not-allowed;}
   .legal-move-space{cursor:pointer;}
   #log{
-    max-height:130px; overflow-y:auto; font-size:12px;
-    color:var(--parchment-dim); display:flex; flex-direction:column; gap:3px;
-    padding-right:4px;
+    max-height:130px; overflow-y:auto; font-size:var(--fs-xs);
+    color:var(--parchment-dim); display:flex; flex-direction:column; gap:var(--sp-1);
+    padding-right:var(--sp-1);
   }
-  details summary{cursor:pointer; color:var(--gold); font-size:12px; margin-bottom:6px;}
-  details p, details li{font-size:12px; color:var(--parchment-dim); line-height:1.5;}
+  details summary{cursor:pointer; color:var(--gold-text); font-size:var(--fs-xs); margin-bottom:var(--sp-2);}
+  details p, details li{font-size:var(--fs-xs); color:var(--parchment-dim); line-height:1.5;}
   .top-actions{
-    position:fixed; top:16px; right:16px; z-index:20;
-    display:flex; gap:10px;
+    position:fixed; top:var(--sp-4); right:var(--sp-4); z-index:20;
+    display:flex; gap:var(--sp-3);
   }
   .overlay{
     position:fixed; inset:0; background:rgba(10,6,4,0.82);
     display:none; align-items:center; justify-content:center; z-index:50;
+    backdrop-filter:blur(2px);
   }
-  .overlay.show{display:flex;}
+  .overlay.show{display:flex; animation:overlay-fade 0.15s var(--ease);}
+  @keyframes overlay-fade{ from{opacity:0;} to{opacity:1;} }
   .overlay-box{
     background:linear-gradient(180deg,var(--wood-light),var(--wood-dark));
-    border:2px solid var(--gold); border-radius:12px;
-    padding:36px 48px; text-align:center; max-width:420px;
+    border:2px solid var(--gold); border-radius:var(--radius-lg);
+    padding:var(--sp-7) var(--sp-8); text-align:center; max-width:420px;
+    box-shadow:var(--shadow-3), var(--bevel-top);
+    animation:overlay-rise 0.2s var(--ease);
   }
-  .overlay-box h2{font-family:'Rye'; color:var(--gold-bright); font-size:32px; margin:0 0 10px;}
-  .overlay-box p{color:var(--parchment); font-size:14px;}
-  small.hint{color:#a89a86; font-size:11px;}
+  @keyframes overlay-rise{ from{opacity:0; transform:translateY(8px) scale(0.98);} to{opacity:1; transform:none;} }
+  .overlay-box h2{font-family:'Rye'; color:var(--gold-bright); font-size:var(--fs-2xl); margin:0 0 var(--sp-2);}
+  .overlay-box p{color:var(--parchment); font-size:var(--fs-base);}
+  small.hint{color:#a89a86; font-size:var(--fs-xs);}
   .howto-tab-btn{background:#2c2018; border:1px solid #6e5a42;}
-  .howto-tab-btn.active{background:var(--rust); border-color:#6e2f16;}
+  .howto-tab-btn.active{background:linear-gradient(180deg,var(--rust-light),var(--rust)); border-color:var(--rust-dark);}
   .menu-tab-btn{background:#2c2018; border:1px solid #6e5a42;}
-  .menu-tab-btn.active{background:var(--rust); border-color:#6e2f16;}
-  #howto-content h3{font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold); font-size:14px; margin:18px 0 8px;}
+  .menu-tab-btn.active{background:linear-gradient(180deg,var(--rust-light),var(--rust)); border-color:var(--rust-dark);}
+  #howto-content h3{font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold-text); font-size:var(--fs-base); margin:var(--sp-5) 0 var(--sp-2);}
   #howto-content h3:first-child{margin-top:0;}
-  #howto-content p{margin:0 0 10px;}
-  #howto-content ul{margin:0 0 12px; padding-left:20px;}
-  #howto-content li{margin-bottom:8px;}
+  #howto-content p{margin:0 0 var(--sp-3); max-width:64ch;}
+  #howto-content ul{margin:0 0 var(--sp-3); padding-left:20px;}
+  #howto-content li{margin-bottom:var(--sp-2); max-width:64ch;}
   #howto-content b{color:var(--gold-bright);}
+  #menu-tab-pieces p, #menu-tab-pieces li, #menu-tab-notes p, #menu-tab-notes li{ max-width:64ch; }
+  #menu-tab-notes li{ margin-bottom:var(--sp-2); }
+  .menu-tab-heading{font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold-text); font-size:var(--fs-base); margin:0 0 var(--sp-2);}
 
   @media (max-width: 700px){
-    body{ padding:12px; }
+    body{ padding:var(--sp-3); }
     h1.title{ font-size:28px; letter-spacing:2px; }
-    .subtitle{ font-size:12px; margin-bottom:14px; }
+    .subtitle{ font-size:var(--fs-xs); margin-bottom:var(--sp-4); }
     /* Not enough width here to pin the buttons in the corner without them
        overlapping the title - fall back to the original in-flow row. */
-    .top-actions{ position:static; display:flex; gap:10px; justify-content:center; margin-bottom:18px; }
-    .app{ flex-direction:column; gap:14px; }
-    .board-panel{ min-width:0; flex-basis:auto; width:100%; padding:8px; }
+    .top-actions{ position:static; display:flex; gap:var(--sp-3); justify-content:center; margin-bottom:var(--sp-5); }
+    .app{ flex-direction:column; gap:var(--sp-4); }
+    .board-panel{ min-width:0; flex-basis:auto; width:100%; padding:var(--sp-2); }
     .control-panel{ min-width:0; flex-basis:auto; width:100%; }
-    .overlay-box{ max-width:calc(100vw - 32px); padding:24px 20px; }
+    .overlay-box{ max-width:calc(100vw - 32px); padding:var(--sp-6) var(--sp-5); }
   }
 
   /* A phone held sideways is wide enough for the desktop side-by-side shape,
@@ -213,12 +296,12 @@
     /* No title above to give the fixed corner buttons clear air here - they'd
        sit on top of the control panel's own content instead. Back to an
        in-flow row above the board, like before the corner treatment. */
-    .top-actions{ position:static; display:flex; gap:8px; justify-content:center; margin-bottom:6px; }
-    .app{ flex-direction:row; flex-wrap:nowrap; gap:8px; align-items:stretch; max-width:none; }
+    .top-actions{ position:static; display:flex; gap:var(--sp-2); justify-content:center; margin-bottom:6px; }
+    .app{ flex-direction:row; flex-wrap:nowrap; gap:var(--sp-2); align-items:stretch; max-width:none; }
     .board-panel{ min-width:0; flex:1 1 auto; width:auto; padding:6px; display:flex; align-items:center; justify-content:center; max-height:calc(100vh - 50px); }
     #board-svg{ width:auto !important; height:100% !important; max-width:100%; max-height:calc(100vh - 62px); }
-    .control-panel{ min-width:150px; max-width:190px; flex:0 0 180px; gap:8px; overflow-y:auto; max-height:calc(100vh - 50px); }
-    .panel-box{ padding:8px 10px; }
+    .control-panel{ min-width:150px; max-width:190px; flex:0 0 180px; gap:var(--sp-2); overflow-y:auto; max-height:calc(100vh - 50px); }
+    .panel-box{ padding:var(--sp-2) var(--sp-3); }
     .panel-title{ margin-bottom:6px; padding-bottom:4px; }
   }
 </style>
@@ -228,8 +311,8 @@
 <h1 class="title">NEFESH</h1>
 <p class="subtitle">a prototype board for playtesting — click to place, move, and capture</p>
 <div class="top-actions">
-  <button id="howto-btn" style="padding:9px 20px; font-size:13px;">How to Play</button>
-  <button id="menu-btn" title="Menu" style="padding:9px 14px; font-size:16px; line-height:1;">&#9776;</button>
+  <button id="howto-btn" class="btn-secondary">How to Play</button>
+  <button id="menu-btn" class="btn-secondary btn-icon" title="Menu">&#9776;</button>
 </div>
 
 <div class="app">
@@ -249,10 +332,10 @@
       <div class="dice-row">
         <div class="die" id="die1">–</div>
         <div class="die" id="die2">–</div>
-        <button id="roll-btn">Roll dice</button>
+        <button id="roll-btn" class="btn-primary">Roll dice</button>
       </div>
       <div id="move-options" class="move-options"></div>
-      <div class="row" style="margin-top:10px;">
+      <div class="row" style="margin-top:var(--sp-3);">
         <button id="pass-btn" disabled>Declare Draw (no legal action)</button>
         <span id="turn-status" style="font-size:12px; color:var(--parchment-dim);"></span>
       </div>
@@ -263,10 +346,10 @@
       <div id="match-summary" style="font-size:13px; margin-bottom:10px;"></div>
       <div id="body-status" style="font-size:12px; color:var(--parchment-dim); margin-bottom:10px;"></div>
       <div id="flip-board-row">
-        <button id="flip-board-btn" style="padding:6px 14px; font-size:12px;">Flip Board</button>
-        <span style="font-size:11px; color:var(--parchment-dim); margin-left:8px;">Turn the board for the other player</span>
+        <button id="flip-board-btn" class="btn-sm">Flip Board</button>
+        <span style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-left:var(--sp-2);">Turn the board for the other player</span>
       </div>
-      <div id="bot-thinking" style="font-size:12px; color:var(--gold); margin-top:8px; display:none;">Computer is thinking…</div>
+      <div id="bot-thinking" style="font-size:var(--fs-xs); color:var(--gold-text); margin-top:var(--sp-2); display:none;">Computer is thinking…</div>
     </div>
 
   </div>
@@ -276,92 +359,92 @@
   <div class="overlay-box">
     <h2 id="win-title">White wins</h2>
     <p id="win-reason"></p>
-    <button id="reset-btn">New game</button>
+    <button id="reset-btn" class="btn-primary" style="margin-top:var(--sp-3);">New game</button>
   </div>
 </div>
 
 <div class="overlay" id="setup-overlay">
-  <div class="overlay-box" style="max-width:420px; text-align:left; padding:26px 30px;">
-    <div class="row" style="align-items:flex-start; margin-bottom:14px;">
+  <div class="overlay-box" style="max-width:420px; text-align:left; padding:var(--sp-6) var(--sp-7);">
+    <div class="row" style="align-items:flex-start; margin-bottom:var(--sp-4);">
       <h2 style="margin:0;">New Game</h2>
-      <button id="setup-close-btn" style="padding:5px 12px; font-size:12px;">Close</button>
+      <button id="setup-close-btn" class="btn-sm">Close</button>
     </div>
-    <div style="display:flex; flex-direction:column; gap:6px; font-size:13px; margin-bottom:14px;">
+    <div style="display:flex; flex-direction:column; gap:var(--sp-2); font-size:var(--fs-base); margin-bottom:var(--sp-4);">
       <label><input type="radio" name="setup-mode" value="pvp" checked> Two players (pass &amp; play)</label>
       <label><input type="radio" name="setup-mode" value="bot-black"> Play as White vs Computer</label>
       <label><input type="radio" name="setup-mode" value="bot-white"> Play as Black vs Computer</label>
     </div>
-    <div id="setup-picker" style="display:none; margin-bottom:14px;">
-      <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Play style:</div>
-      <select id="setup-persona-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
-      <div id="setup-persona-blurb" style="font-size:11px; color:var(--parchment-dim); margin-top:6px; margin-bottom:12px; font-style:italic;"></div>
+    <div id="setup-picker" style="display:none; margin-bottom:var(--sp-4);">
+      <div style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-bottom:var(--sp-2);">Play style:</div>
+      <select id="setup-persona-select" class="select-field"></select>
+      <div id="setup-persona-blurb" style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-top:var(--sp-2); margin-bottom:var(--sp-3); font-style:italic;"></div>
 
-      <div style="font-size:11px; color:var(--parchment-dim); margin-bottom:6px;">Difficulty:</div>
-      <select id="setup-difficulty-select" style="width:100%; padding:6px; font-family:'Spectral',serif; font-size:13px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px;"></select>
-      <div id="setup-difficulty-blurb" style="font-size:11px; color:var(--parchment-dim); margin-top:6px; font-style:italic;"></div>
+      <div style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-bottom:var(--sp-2);">Difficulty:</div>
+      <select id="setup-difficulty-select" class="select-field"></select>
+      <div id="setup-difficulty-blurb" style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-top:var(--sp-2); font-style:italic;"></div>
     </div>
-    <button id="setup-start-btn" style="width:100%; padding:10px; font-size:14px;">Start Game</button>
+    <button id="setup-start-btn" class="btn-primary" style="width:100%;">Start Game</button>
   </div>
 </div>
 
 <div class="overlay" id="howto-overlay">
-  <div class="overlay-box" style="max-width:720px; max-height:82vh; overflow-y:auto; text-align:left; padding:26px 30px;">
-    <div class="row" style="align-items:flex-start; margin-bottom:14px;">
+  <div class="overlay-box" style="max-width:720px; max-height:82vh; overflow-y:auto; text-align:left; padding:var(--sp-6) var(--sp-7);">
+    <div class="row" style="align-items:flex-start; margin-bottom:var(--sp-4);">
       <h2 style="margin:0;">How to Play</h2>
-      <button id="howto-close-btn">Close</button>
+      <button id="howto-close-btn" class="btn-sm">Close</button>
     </div>
-    <div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+    <div style="display:flex; gap:var(--sp-2); margin-bottom:var(--sp-5); flex-wrap:wrap;">
       <button class="howto-tab-btn" data-tab="rules">Rules</button>
       <button class="howto-tab-btn" data-tab="strategy">Strategy Tips</button>
       <button class="howto-tab-btn" data-tab="personas">Persona Guide</button>
     </div>
-    <div id="howto-content" style="font-size:13.5px; line-height:1.65; color:var(--parchment);"></div>
+    <div id="howto-content" style="font-size:var(--fs-base); line-height:1.65; color:var(--parchment);"></div>
   </div>
 </div>
 
 <div class="overlay" id="menu-overlay">
-  <div class="overlay-box" style="max-width:600px; max-height:82vh; overflow-y:auto; text-align:left; padding:26px 30px;">
-    <div class="row" style="align-items:flex-start; margin-bottom:14px;">
+  <div class="overlay-box" style="max-width:600px; max-height:82vh; overflow-y:auto; text-align:left; padding:var(--sp-6) var(--sp-7);">
+    <div class="row" style="align-items:flex-start; margin-bottom:var(--sp-4);">
       <h2 style="margin:0;">Menu</h2>
-      <button id="menu-close-btn">Close</button>
+      <button id="menu-close-btn" class="btn-sm">Close</button>
     </div>
-    <button id="menu-newgame-btn" style="width:100%; padding:10px; font-size:14px; margin-bottom:18px;">New Game…</button>
-    <div class="row" style="margin-bottom:18px;">
-      <span style="font-size:13px; color:var(--parchment);">Sound effects</span>
-      <button id="sound-toggle-btn" style="padding:6px 16px; font-size:12px;"></button>
+    <button id="menu-newgame-btn" class="btn-secondary" style="width:100%; margin-bottom:var(--sp-5);">New Game…</button>
+    <div class="row" style="margin-bottom:var(--sp-5);">
+      <span style="font-size:var(--fs-base); color:var(--parchment);">Sound effects</span>
+      <button id="sound-toggle-btn" class="btn-sm"></button>
     </div>
-    <div style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+    <div style="display:flex; gap:var(--sp-2); margin-bottom:var(--sp-5); flex-wrap:wrap;">
       <button class="menu-tab-btn" data-tab="log">Log</button>
       <button class="menu-tab-btn" data-tab="pieces">Piece Reference</button>
       <button class="menu-tab-btn" data-tab="notes">Designer Notes</button>
     </div>
 
     <div id="menu-tab-log">
-      <div id="last-game-note" style="display:none; font-size:11px; color:var(--gold); margin-bottom:8px;">
+      <div id="last-game-note" style="display:none; font-size:var(--fs-xs); color:var(--gold-text); margin-bottom:var(--sp-2); align-items:center; gap:var(--sp-2);">
         A previous game's log was auto-saved.
-        <button id="copy-lastgame-btn" style="padding:3px 8px; font-size:11px; margin-left:6px;">Copy it</button>
+        <button id="copy-lastgame-btn" class="btn-sm" style="margin-left:var(--sp-2);">Copy it</button>
       </div>
-      <div class="row" style="margin-bottom:6px; justify-content:flex-end;">
-        <button id="copy-log-btn" style="padding:4px 10px; font-size:11px;">Copy current log</button>
+      <div class="row" style="margin-bottom:var(--sp-2); justify-content:flex-end;">
+        <button id="copy-log-btn" class="btn-sm">Copy current log</button>
       </div>
-      <textarea id="log-copy-area" readonly style="display:none; width:100%; height:90px; margin-bottom:8px; background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:5px; font-size:11px; padding:6px;"></textarea>
-      <div id="log" style="font-size:13.5px; line-height:1.65; color:var(--parchment);"></div>
+      <textarea id="log-copy-area" readonly style="display:none; width:100%; height:90px; margin-bottom:var(--sp-2); background:#2c2018; color:var(--cream); border:1px solid var(--gold); border-radius:var(--radius-sm); font-size:var(--fs-xs); padding:var(--sp-2);"></textarea>
+      <div id="log" style="font-size:var(--fs-base); line-height:1.65; color:var(--parchment);"></div>
     </div>
 
-    <div id="menu-tab-pieces" style="display:none; font-size:13.5px; line-height:1.65; color:var(--parchment);">
-      <h3 style="font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold); font-size:14px; margin:0 0 8px;">PIECE BONUSES</h3>
-      <p style="margin:0 0 10px;">Every move is the dice sum plus the moving piece's flat bonus, always fully applied:</p>
-      <ul style="margin:0 0 14px; padding-left:20px;">
-        <li style="margin-bottom:6px;">Creature +0 &middot; Dwarf +1 &middot; Man +2 &middot; Elf +3 (Race pieces - forward only)</li>
+    <div id="menu-tab-pieces" style="display:none; font-size:var(--fs-base); line-height:1.65; color:var(--parchment);">
+      <h3 class="menu-tab-heading">PIECE BONUSES</h3>
+      <p style="margin:0 0 var(--sp-3);">Every move is the dice sum plus the moving piece's flat bonus, always fully applied:</p>
+      <ul style="margin:0 0 var(--sp-4); padding-left:20px;">
+        <li style="margin-bottom:var(--sp-2);">Creature +0 &middot; Dwarf +1 &middot; Man +2 &middot; Elf +3 (Race pieces - forward only)</li>
         <li>Mind +1 &middot; Will +2 &middot; Body +3 &middot; Soul no bonus, but wins by reaching the Infinite (Person pieces - forward or backward)</li>
       </ul>
-      <h3 style="font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold); font-size:14px; margin:0 0 8px;">SOUL STATUS</h3>
-      <p id="soul-status-white" style="margin:0 0 6px;"></p>
+      <h3 class="menu-tab-heading">SOUL STATUS</h3>
+      <p id="soul-status-white" style="margin:0 0 var(--sp-2);"></p>
       <p id="soul-status-black" style="margin:0;"></p>
     </div>
 
-    <div id="menu-tab-notes" style="display:none; font-size:13px; color:var(--parchment-dim); line-height:1.5;">
-      <p style="margin:0 0 10px;">A few judgment calls made to get this playable — flag anything that's wrong and it can be adjusted:</p>
+    <div id="menu-tab-notes" style="display:none; font-size:var(--fs-sm); color:var(--parchment-dim); line-height:1.5;">
+      <p style="margin:0 0 var(--sp-3);">A few judgment calls made to get this playable — flag anything that's wrong and it can be adjusted:</p>
       <ul style="margin:0; padding-left:20px;">
         <li style="margin-bottom:8px;">The 4 central-ring spaces are modeled as a single set passed through once per lap (not twice), sitting between the two loops in the sequence. If Nefesh's real geometry passes through center twice per figure-8 lap, this needs revising.</li>
         <li style="margin-bottom:8px;">Movement uses only the sum of both dice — d1 and d2 alone, and their difference, aren't usable as a move length. A piece's bonus is a flat add, always fully applied on top of that sum (not a range you choose from).</li>
