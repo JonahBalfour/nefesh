@@ -1,0 +1,11 @@
+Sound effects:
+
+  dice.m4a    - JDSherbert, Tabletop Games SFX Pack (free tier), "Dice Roll - 1"
+                trimmed to ~0.65s with a short fade-out
+  move.ogg    - JDSherbert, Tabletop Games SFX Pack (free tier), "Piece Move - 1"
+  capture.ogg - JDSherbert, Tabletop Games SFX Pack (free tier), "Piece Impact - 2"
+  win.ogg     - Kenney.nl, Interface Sounds pack, "confirmation_004"
+
+https://jdsherbert.itch.io/tabletop-games-sfx-pack (Royalty Free, see LICENSE.pdf
+in the pack download)
+https://kenney.nl/assets/interface-sounds (CC0 / public domain)

@@ -594,40 +594,76 @@ function pathToMaster(color, progress){
 }
 
 // ---------- sound ----------
-// Small synthesized dice-clatter (a few short filtered noise bursts) so we
-// don't need any sound asset files - just the Web Audio API.
-let audioCtx = null;
-function getAudioCtx(){
-  if(!audioCtx){
-    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
+// Real recorded sound effects (dice/move/capture from JDSherbert's Tabletop
+// Games SFX Pack; win from Kenney.nl Interface Sounds - both royalty-free,
+// see sounds/CREDITS.txt) instead of synthesized oscillator tones. Played
+// through the Web Audio API (not plain <audio>) so we can apply a modest
+// gain above 1.0 with a limiter as a safety net against clipping - these
+// clips are already mastered close to 0dBFS, so there's very little clean
+// headroom to work with.
+const SOUND_CLIPS = {
+  dice: 'sounds/dice.m4a',
+  move: 'sounds/move.ogg',
+  capture: 'sounds/capture.ogg',
+  win: 'sounds/win.ogg',
+};
+let sfxCtx = null;
+const sfxBuffers = {};
+function getSfxCtx(){
+  if(!sfxCtx){
+    try{ sfxCtx = new (window.AudioContext||window.webkitAudioContext)(); }
     catch(e){ return null; }
   }
-  return audioCtx;
+  return sfxCtx;
 }
-function playDiceSound(){
+function loadSfxBuffer(name){
+  const ctx = getSfxCtx();
+  if(!ctx) return Promise.resolve(null);
+  if(sfxBuffers[name]) return sfxBuffers[name];
+  const p = fetch(SOUND_CLIPS[name])
+    .then(r=>r.arrayBuffer())
+    .then(data=>ctx.decodeAudioData(data))
+    .catch(()=>null);
+  sfxBuffers[name] = p;
+  return p;
+}
+Object.keys(SOUND_CLIPS).forEach(loadSfxBuffer); // warm the cache up front
+// These clips are already mastered near 0dBFS peak (they're short percussive
+// foley hits), so there's very little clean headroom - a couple dB at most.
+// A shared limiter (fast attack, short release) sits after every gain stage
+// so each sound's gain can be pushed right up to that headroom without the
+// occasional hot sample turning into audible clipping/distortion.
+let sfxLimiter = null;
+function getSfxLimiter(){
+  const ctx = getSfxCtx();
+  if(!ctx) return null;
+  if(!sfxLimiter){
+    sfxLimiter = ctx.createDynamicsCompressor();
+    sfxLimiter.threshold.value = -1.5;
+    sfxLimiter.knee.value = 6;
+    sfxLimiter.ratio.value = 12;
+    sfxLimiter.attack.value = 0.002;
+    sfxLimiter.release.value = 0.08;
+    sfxLimiter.connect(ctx.destination);
+  }
+  return sfxLimiter;
+}
+function playClip(name, gainValue){
   if(!soundEnabled) return;
-  const ctx = getAudioCtx();
+  const ctx = getSfxCtx();
   if(!ctx) return;
   if(ctx.state==='suspended') ctx.resume();
-  const now = ctx.currentTime;
-  [0, 0.08, 0.15].forEach((offset, i)=>{
-    const dur = 0.07;
-    const bufferSize = Math.floor(ctx.sampleRate*dur);
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for(let j=0;j<bufferSize;j++){ data[j] = (Math.random()*2-1) * Math.pow(1-j/bufferSize, 2); }
+  loadSfxBuffer(name).then(buffer=>{
+    if(!buffer || !soundEnabled) return;
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = 1400 - i*220 + Math.random()*300;
-    filter.Q.value = 1.1;
     const gain = ctx.createGain();
-    gain.gain.value = 0.45 - i*0.11;
-    src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
-    src.start(now+offset);
+    gain.gain.value = gainValue==null ? 1 : gainValue;
+    src.connect(gain); gain.connect(getSfxLimiter());
+    src.start();
   });
 }
+function playDiceSound(){ playClip('dice', 1.2); }
 
 // ---------- state ----------
 function freshPieces(){
@@ -687,48 +723,12 @@ function log(msg){
   if(state.log.length>60) state.log.pop();
 }
 
-// ---------- move/capture sound effects ----------
-// Reuses the AudioContext/getAudioCtx() set up above for the dice sound.
+// ---------- move/capture/win sound effects ----------
 let soundEnabled = true;
 try{ soundEnabled = localStorage.getItem('nefesh-sound-enabled') !== 'off'; } catch(e){ /* private browsing */ }
-function playTone(freq, startTime, duration, gainPeak, type){
-  const ctx = getAudioCtx();
-  if(!ctx) return;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = type || 'sine';
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0, startTime);
-  gain.gain.linearRampToValueAtTime(gainPeak, startTime+0.008);
-  gain.gain.exponentialRampToValueAtTime(0.001, startTime+duration);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(startTime);
-  osc.stop(startTime+duration+0.02);
-}
-function playMoveSound(){
-  if(!soundEnabled) return;
-  const ctx = getAudioCtx();
-  if(!ctx) return;
-  playTone(520, ctx.currentTime, 0.09, 0.18, 'triangle');
-}
-function playCaptureSound(){
-  if(!soundEnabled) return;
-  const ctx = getAudioCtx();
-  if(!ctx) return;
-  const t = ctx.currentTime;
-  playTone(220, t, 0.16, 0.22, 'sawtooth');
-  playTone(160, t+0.05, 0.18, 0.2, 'sawtooth');
-}
-function playWinSound(){
-  if(!soundEnabled) return;
-  const ctx = getAudioCtx();
-  if(!ctx) return;
-  const t = ctx.currentTime;
-  [523.25, 659.25, 783.99, 1046.5].forEach((freq,i)=>{
-    playTone(freq, t+i*0.11, 0.3, 0.16, 'sine');
-  });
-}
+function playMoveSound(){ playClip('move', 1.2); }
+function playCaptureSound(){ playClip('capture', 1.25); }
+function playWinSound(){ playClip('win', 1.3); }
 function setSoundEnabled(on){
   soundEnabled = on;
   try{ localStorage.setItem('nefesh-sound-enabled', on ? 'on' : 'off'); } catch(e){ /* private browsing - not critical */ }
