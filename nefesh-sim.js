@@ -933,16 +933,17 @@ function runPersonaImpact(personaId, gamesCount, ruleOpts={}){
   console.log(`Infinite-entry wins: ${infiniteWins} (${decisive?(100*infiniteWins/decisive).toFixed(1):'n/a'}% of decisive games)  Soul-capture wins: ${soulCaptureWins}`);
 }
 
-const LIVE_RULES = {bonusMode:'fixed', diceMenu:'sum-only', preplaceRace:true}; // matches nefesh.html as currently shipped
+// Matches nefesh.html as currently shipped - this now INCLUDES the three
+// Candidate 1 changes (see nefesh-rule-candidates.md), which were adopted
+// into the live game: a 2-value tolerance window for Infinite entry, the
+// Soul capped from passing that threshold before its own Body is captured,
+// and pieces looping instead of self-lap-capturing on a completed circuit.
+const LIVE_RULES = {bonusMode:'fixed', diceMenu:'sum-only', preplaceRace:true, infiniteWindow:1, capSoulBeforeBodyCaptured:true, allowLooping:true};
 
-// RULE CANDIDATE 1 - found via the MCTS-driven rule search (see
-// nefesh-ai-engine-spec.md and nefesh-rule-candidates.md for the full
-// writeup). Relative to LIVE_RULES: relaxes the Infinite's exact-landing
-// requirement to a 2-value window at the end of the lap, caps the Soul from
-// passing that threshold at all before its own Body is captured, and lets
-// non-Soul pieces loop instead of self-lap-capturing. Not yet adopted into
-// nefesh.html - this is the candidate from the research track only.
-const RULE_CANDIDATE_1 = {...LIVE_RULES, infiniteWindow:1, capSoulBeforeBodyCaptured:true, allowLooping:true};
+// RULE_CANDIDATE_1 is kept as an alias for backward compatibility with the
+// sweep/diagnostic scripts written during the search - it's identical to
+// LIVE_RULES now that it's been adopted, not a separate experimental config.
+const RULE_CANDIDATE_1 = {...LIVE_RULES};
 
 // Only run the CLI batch when this file is executed directly (`node
 // nefesh-sim.js`), not when it's require()'d as a library - otherwise every
