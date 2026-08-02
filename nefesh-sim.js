@@ -55,6 +55,7 @@ function resetState(){
     roundsWithNoBodyCaptured:0,
     winner:null,
     winReason:'',
+    winType:null, // 'infinite' | 'soul_capture' | null (null covers draws and in-progress games)
     isDraw:false,
     log:[],
     firstContactRound:null,
@@ -88,10 +89,12 @@ function occupantsAtMaster(masterIdx){
 }
 
 let DICE_MENU_MODE = 'full'; // 'full' (d1,d2,sum,diff - current rules); 'no-diff' (drop the difference); 'sum-only' (just the sum); 'dice-only' (just d1 or d2, no sum, no difference)
+let DICE_COUNT_MODE = 'two'; // 'two' = current rules (two dice rolled each round); 'one' = only one die is rolled at all - no sum, difference, or choice-of-two-dice is possible, DICE_MENU_MODE is moot
 
 function diceBaseOptions(){
   if(!state.dice) return [];
   const {d1,d2} = state.dice;
+  if(DICE_COUNT_MODE==='one') return d1>0 ? [d1] : [];
   let vals;
   if(DICE_MENU_MODE==='sum-only') vals = [d1+d2];
   else if(DICE_MENU_MODE==='no-diff') vals = [d1,d2,d1+d2];
@@ -103,6 +106,10 @@ function diceBaseOptions(){
 
 let SOUL_BONUS_AFTER_OWN_BODY_CAPTURED = 0; // 0 = baseline (Soul keeps its normal +0); variant sets this higher
 let BONUS_MODE = 'flex'; // 'flex' = current rules (choose anywhere from 0 up to the bonus); 'fixed' = always add the full bonus
+let ALLOW_LOOPING = false; // false = current rules (a non-Soul piece completing a full circuit is captured); true = it wraps around and keeps going instead, same as the Soul already does
+let EASY_INFINITE_ENTRY = false; // false = current rules (the Soul must land on EXACTLY square 36 to enter the Infinite); true = once its own Body is captured, ANY move that completes or passes a full circuit wins outright - no exact-count precision needed
+let INFINITE_WINDOW = 0; // 0 = current rules (must land on EXACTLY TRACK_LEN); N = also allow landing anywhere from TRACK_LEN-N to TRACK_LEN, a small tolerance window at the end of the lap - still gated on Body capture, ignored if EASY_INFINITE_ENTRY is on
+let CAP_SOUL_BEFORE_BODY_CAPTURED = false; // true = the Soul can't move past (overshoot) the Infinite threshold at all until its own Body has been captured - it can approach right up to it, just not go beyond, removing today's shuttle-back-and-forth-near-the-end behavior
 
 function effectiveBonus(color, def){
   if(def.id==='soul' && state.bodyCaptured[color]) return SOUL_BONUS_AFTER_OWN_BODY_CAPTURED;
@@ -143,6 +150,14 @@ function getLegalMoves(color, pieceId){
     if(def.id!=='soul'){
       if(delta<0 && newProgress<0) return;
       if(newProgress>=TRACK_LEN){
+        if(ALLOW_LOOPING){
+          const wrapped = newProgress % TRACK_LEN;
+          const masterIdx = pathToMaster(color, wrapped);
+          const occ = occupantsAtMaster(masterIdx);
+          if(soulCaptureBlocked(occ)) return;
+          legal.push({delta, newProgress: wrapped, kind:'normal', masterIdx, occ});
+          return;
+        }
         legal.push({delta, newProgress, kind:'self-lap-capture'});
         return;
       }
@@ -157,9 +172,19 @@ function getLegalMoves(color, pieceId){
     // capture rules everywhere (matches nefesh.html exactly) - the only two
     // special cases are landing on exactly TRACK_LEN (wins, once own Body is
     // captured) and, after completing a first circuit, going negative past its
-    // own start (self-destructs instead of being blocked).
+    // own start (self-destructs instead of being blocked). Under
+    // EASY_INFINITE_ENTRY, the first special case relaxes from an exact
+    // landing to "reaches or passes" TRACK_LEN; under INFINITE_WINDOW, it
+    // relaxes to a small tolerance window ending at TRACK_LEN instead.
     if(!p.completedCircuit && delta<0 && newProgress<0) return;
-    if(newProgress === TRACK_LEN && state.bodyCaptured[color]){
+    // Before Body is captured, CAP_SOUL_BEFORE_BODY_CAPTURED blocks the Soul
+    // from overshooting the Infinite threshold at all - it can approach right
+    // up to TRACK_LEN, just not go past it, until it's actually unlocked.
+    if(CAP_SOUL_BEFORE_BODY_CAPTURED && !state.bodyCaptured[color] && newProgress>TRACK_LEN) return;
+    const infiniteThresholdMet = EASY_INFINITE_ENTRY
+      ? newProgress>=TRACK_LEN
+      : (newProgress<=TRACK_LEN && newProgress>=TRACK_LEN-INFINITE_WINDOW);
+    if(infiniteThresholdMet && state.bodyCaptured[color]){
       legal.push({delta, newProgress, kind:'soul-win'});
       return;
     }
@@ -215,6 +240,7 @@ function placePiece(color, pieceId){
     if(o.pieceId==='soul'){
       const winner = o.color==='white' ? 'black' : 'white';
       state.winner = winner;
+      state.winType = 'soul_capture';
       state.winReason = o.color===color
         ? `${color} self-captured its own Soul while placing a piece - ${winner} wins.`
         : `${color} captured the opposing Soul while placing a piece.`;
@@ -237,11 +263,13 @@ function performMove(color, pieceId, move){
   } else if(move.kind==='soul-win'){
     p.progress = move.newProgress;
     state.winner = color;
+    state.winType = 'infinite';
     state.winReason = `${color}'s Soul entered the Infinite.`;
   } else if(move.kind==='soul-overshoot-capture'){
     p.status='captured';
     const winner = color==='white' ? 'black' : 'white';
     state.winner = winner;
+    state.winType = 'soul_capture'; // the Soul is lost via the overshoot mechanic rather than a direct landing-capture, but it's still fundamentally a Soul loss, not an Infinite entry
     state.winReason = `${color}'s Soul overshot and was lost - ${winner} wins.`;
   } else if(move.kind==='normal'){
     p.progress = move.newProgress;
@@ -257,6 +285,7 @@ function performMove(color, pieceId, move){
       if(o.pieceId==='soul'){
         const winner = o.color==='white' ? 'black' : 'white';
         state.winner = winner;
+        state.winType = 'soul_capture';
         state.winReason = o.color===color ? `${color} self-captured its own Soul - ${winner} wins.` : `${color} captured the opposing Soul.`;
       }
     });
@@ -289,7 +318,7 @@ function finishAction(color){
 // ============ bot + simulation harness (new - not from the prototype) ============
 function rollDice(){
   const d1 = 1+Math.floor(Math.random()*6);
-  const d2 = 1+Math.floor(Math.random()*6);
+  const d2 = DICE_COUNT_MODE==='one' ? null : 1+Math.floor(Math.random()*6);
   state.dice = {d1,d2};
 }
 
@@ -449,11 +478,101 @@ function cloneState(s){
     roundsWithNoBodyCaptured: s.roundsWithNoBodyCaptured,
     winner: s.winner,
     winReason: s.winReason,
+    winType: s.winType,
     isDraw: s.isDraw,
     firstContactRound: s.firstContactRound,
     log: [], // lookahead doesn't need history - skip cloning it to keep this cheap
     pieces: { white: cloneOne(s.pieces.white), black: cloneOne(s.pieces.black) },
   };
+}
+
+// ---------- pure wrappers for tree search (MCTS) ----------
+// Everything above mutates the single module-global `state` in place, which
+// is fine for the CLI harness (one game in flight at a time) but wrong for
+// tree search, which needs to explore many hypothetical futures from the
+// same node without them corrupting each other. These wrappers give a caller
+// a pure interface - the state passed in is never touched, a new state comes
+// back out - by temporarily pointing the module global at a clone (same
+// swap-and-restore trick pickLookahead already uses above), running the
+// existing mutators against it, then restoring the real global.
+function isTerminal(s){
+  return s.winner !== null && s.winner !== undefined;
+}
+function getWinner(s){
+  return s.winner; // 'white' | 'black' | 'draw' | null
+}
+function getWinType(s){
+  return s.winType || null; // 'infinite' | 'soul_capture' | null
+}
+
+// The full set of legal actions for a color's turn (placements AND moves
+// together) against an arbitrary state - the per-turn equivalent of the
+// spec's `getLegalMoves(state, player)`. Each action also carries its color,
+// so it's self-contained for applyMove below (unlike collectPlaceOptions/
+// collectMoveOptions, which rely on being called while the global `state`
+// already point at the right position).
+function getLegalActions(s, color){
+  const real = state;
+  try{
+    state = s;
+    return [...collectPlaceOptions(color), ...collectMoveOptions(color)]
+      .map(a => ({...a, color}));
+  } finally {
+    // try/finally so a thrown exception mid-computation can't leave the
+    // global `state` pointer stuck on this call's clone - without this, a
+    // bug anywhere in here would silently corrupt every later call instead
+    // of failing at its actual source.
+    state = real;
+  }
+}
+
+// Applies one action (from getLegalActions) to a clone of `s` and returns
+// the resulting state, leaving `s` and the module-global `state` untouched.
+// Also ends the turn (finishAction) so the result is a genuinely new
+// decision/chance point, matching one ply of real play - one placement or
+// move per turn, same as nefesh.html. (Doesn't handle PLACE_AND_MOVE_MODE's
+// chained extra move - that variant isn't part of the baseline MCTS work.)
+function applyMove(s, action){
+  const real = state;
+  try{
+    state = cloneState(s);
+    if(action.type==='place') placePiece(action.color, action.pieceId);
+    else performMove(action.color, action.pieceId, action.move);
+    if(!state.winner) finishAction(action.color);
+    return state;
+  } finally {
+    state = real; // see getLegalActions above for why this is a finally, not a plain assignment
+  }
+}
+
+// Chance-node support for dice. Two six-sided dice is only 36 outcomes, so
+// the spec recommends enumerating them weighted by probability (lower
+// variance) over sampling one at random - enumerateDiceOutcomes is that
+// list; sampleDiceRoll is there too for whenever sampling is preferred
+// instead (e.g. rollout playouts, where enumerating all 36 branches would
+// be wasteful).
+function enumerateDiceOutcomes(){
+  const outcomes = [];
+  if(DICE_COUNT_MODE==='one'){
+    for(let d1=1; d1<=6; d1++) outcomes.push({d1, d2:null, prob: 1/6});
+    return outcomes;
+  }
+  for(let d1=1; d1<=6; d1++){
+    for(let d2=1; d2<=6; d2++){
+      outcomes.push({d1, d2, prob: 1/36});
+    }
+  }
+  return outcomes;
+}
+function sampleDiceRoll(){
+  const d1 = 1+Math.floor(Math.random()*6);
+  const d2 = DICE_COUNT_MODE==='one' ? null : 1+Math.floor(Math.random()*6);
+  return {d1, d2};
+}
+function applyDiceRoll(s, d1, d2){
+  const clone = cloneState(s);
+  clone.dice = {d1, d2};
+  return clone;
 }
 
 // Static "how good is this board" evaluator - used as the leaf-node score for
@@ -573,26 +692,31 @@ function botAct(color){
 function simulateOneGame(maxRounds){
   resetState();
   let actions = 0;
-  let passStreak = 0; // both sides passing in a row with no dice ever mattering = true deadlock
-  let passCount = 0; // how many individual turns in THIS game had no legal action
+  let passCount = 0; // 0 or 1 in practice - kept as a count for backward-compatible stat labels
   while(!state.winner && state.round <= maxRounds){
     if(!state.dice) rollDice();
     const mover = currentMover();
     if(mover===null){ continue; } // shouldn't happen, finishAction advances the round
-    const result = botAct(mover);
-    actions++;
-    if(result==='passed'){
-      passStreak++;
+    // Matches nefesh.html's actual rule: the instant one player has no legal
+    // placement or move, the game ends immediately as a draw - not after
+    // several passes back and forth. (This replaces an older 4-pass-streak
+    // heuristic that no longer matched the live game.)
+    if(!hasAnyLegalAction(mover)){
+      state.winner = 'draw';
+      state.isDraw = true;
+      state.winType = null;
+      state.winReason = `${mover} had no legal placement or move - draw.`;
       passCount++;
-      if(passStreak>=4){ break; } // both sides passed twice in a row = true stalemate, stop early
-    } else {
-      passStreak = 0;
+      break;
     }
+    botAct(mover);
+    actions++;
     if(actions > maxRounds*10){ break; } // safety valve against any infinite-loop bug
   }
   return {
     winner: state.winner,
     winReason: state.winReason,
+    winType: state.winType,
     rounds: state.round,
     actions,
     passCount,
@@ -639,8 +763,8 @@ function runBatch(label, {sacrifice=false, soulBonus=0, placeAndMove='off', prep
       } else {
         wins[r.winner]++;
         winReasons[r.winReason] = (winReasons[r.winReason]||0)+1;
-        if(r.winReason.includes('entered the Infinite')) infiniteWins++;
-        else if(r.winReason.includes('captured the opposing Soul')) soulCaptureWins++;
+        if(r.winType==='infinite') infiniteWins++;
+        else if(r.winType==='soul_capture') soulCaptureWins++;
       }
       totalRounds += r.rounds;
       roundCounts.push(r.rounds);
@@ -751,8 +875,8 @@ function runProfileRoundRobin(label, strategy, gamesPerMatchup, ruleOpts={}){
         if(r.stalemate || r.winner==='draw') undecided++;
         else {
           if(r.winner===aColor) aWins++; else bWins++;
-          if(r.winReason.includes('entered the Infinite')) allInfiniteWins++;
-          else if(r.winReason.includes('captured the opposing Soul')) allSoulCaptureWins++;
+          if(r.winType==='infinite') allInfiniteWins++;
+          else if(r.winType==='soul_capture') allSoulCaptureWins++;
         }
       }
       const decisive = aWins+bWins;
@@ -792,8 +916,8 @@ function runPersonaImpact(personaId, gamesCount, ruleOpts={}){
     roundCounts.push(r.rounds);
     if(r.stalemate || r.winner==='draw'){ undecided++; continue; }
     if(r.winner===personaColor) personaWins++; else balancedWins++;
-    if(r.winReason.includes('entered the Infinite')) infiniteWins++;
-    else if(r.winReason.includes('captured the opposing Soul')) soulCaptureWins++;
+    if(r.winType==='infinite') infiniteWins++;
+    else if(r.winType==='soul_capture') soulCaptureWins++;
   }
 
   roundCounts.sort((a,b)=>a-b);
@@ -811,12 +935,58 @@ function runPersonaImpact(personaId, gamesCount, ruleOpts={}){
 
 const LIVE_RULES = {bonusMode:'fixed', diceMenu:'sum-only', preplaceRace:true}; // matches nefesh.html as currently shipped
 
-// How often does "no legal action" (Pass) actually come up under the live
-// ruleset? Balanced-vs-balanced greedy bots (BOT_STRATEGY default), a large
-// sample so the rare-event rate is trustworthy.
-runBatch('Live rules - Pass frequency check', LIVE_RULES);
+// RULE CANDIDATE 1 - found via the MCTS-driven rule search (see
+// nefesh-ai-engine-spec.md and nefesh-rule-candidates.md for the full
+// writeup). Relative to LIVE_RULES: relaxes the Infinite's exact-landing
+// requirement to a 2-value window at the end of the lap, caps the Soul from
+// passing that threshold at all before its own Body is captured, and lets
+// non-Soul pieces loop instead of self-lap-capturing. Not yet adopted into
+// nefesh.html - this is the candidate from the research track only.
+const RULE_CANDIDATE_1 = {...LIVE_RULES, infiniteWindow:1, capSoulBeforeBodyCaptured:true, allowLooping:true};
 
-// ['vanguard','herald','assassin','guardian','zealot','turtle'].forEach(id=>{
-//   runPersonaImpact(id, 400, LIVE_RULES);
-// });
+// Only run the CLI batch when this file is executed directly (`node
+// nefesh-sim.js`), not when it's require()'d as a library - otherwise every
+// caller (e.g. the MCTS engine) would trigger a console-dumping batch run
+// just by importing this module.
+if(require.main === module){
+  // How often does "no legal action" (Pass) actually come up under the live
+  // ruleset? Balanced-vs-balanced greedy bots (BOT_STRATEGY default), a large
+  // sample so the rare-event rate is trustworthy.
+  runBatch('Live rules - Pass frequency check', LIVE_RULES);
+
+  // ['vanguard','herald','assassin','guardian','zealot','turtle'].forEach(id=>{
+  //   runPersonaImpact(id, 400, LIVE_RULES);
+  // });
+}
+
+module.exports = {
+  // constants / data
+  PIECE_DEFS, TRACK_LEN, START_MASTER, LIVE_RULES, RULE_CANDIDATE_1,
+  // core rules (operate on the module-global `state` - see resetState/cloneState)
+  getDef, resetState, freshPieces, pathToMaster, currentMover,
+  occupantsAtMaster, getLegalMoves, hasAnyLegalAction, canPlaceAnyBenchPiece,
+  placePiece, performMove, finishAction, collectPlaceOptions, collectMoveOptions,
+  // pure wrappers for tree search (MCTS) - the §2 interface
+  cloneState, isTerminal, getWinner, getWinType, getLegalActions, applyMove,
+  enumerateDiceOutcomes, sampleDiceRoll, applyDiceRoll,
+  // rule-variant knobs, exposed so an external harness can set them before
+  // calling into the functions above (mirrors what runBatch does internally)
+  setRuleFlags({sacrifice, soulBonus, placeAndMove, preplaceRace, bonusMode, diceMenu, allowLooping, diceCountMode, easyInfiniteEntry, infiniteWindow, capSoulBeforeBodyCaptured}={}){
+    if(sacrifice!==undefined) SACRIFICE_OWN_BODY = sacrifice;
+    if(soulBonus!==undefined) SOUL_BONUS_AFTER_OWN_BODY_CAPTURED = soulBonus;
+    if(placeAndMove!==undefined) PLACE_AND_MOVE_MODE = placeAndMove;
+    if(preplaceRace!==undefined) PREPLACE_RACE_PIECES = preplaceRace;
+    if(bonusMode!==undefined) BONUS_MODE = bonusMode;
+    if(diceMenu!==undefined) DICE_MENU_MODE = diceMenu;
+    if(allowLooping!==undefined) ALLOW_LOOPING = allowLooping;
+    if(diceCountMode!==undefined) DICE_COUNT_MODE = diceCountMode;
+    if(easyInfiniteEntry!==undefined) EASY_INFINITE_ENTRY = easyInfiniteEntry;
+    if(infiniteWindow!==undefined) INFINITE_WINDOW = infiniteWindow;
+    if(capSoulBeforeBodyCaptured!==undefined) CAP_SOUL_BEFORE_BODY_CAPTURED = capSoulBeforeBodyCaptured;
+  },
+  // access to the module-global state, for callers that want to drive games
+  // directly with the mutate-in-place functions (e.g. the existing bots do)
+  getState(){ return state; },
+  setState(s){ state = s; },
+};
 

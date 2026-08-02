@@ -367,8 +367,8 @@
         <li style="margin-bottom:8px;">Movement uses only the sum of both dice — d1 and d2 alone, and their difference, aren't usable as a move length. A piece's bonus is a flat add, always fully applied on top of that sum (not a range you choose from).</li>
         <li style="margin-bottom:8px;">The 4 Race pieces (Creature, Dwarf, Man, Elf) start the game already on the board instead of on the bench — no placement needed for these. Only the 4 Person pieces (Mind, Will, Body, Soul) still need to be placed.</li>
         <li style="margin-bottom:8px;">Placement can happen on your turn even after the dice are rolled (rules say placement must happen before the roll — simplified here so the turn structure stays simple; you can self-enforce the stricter timing at the table).</li>
-        <li style="margin-bottom:8px;">The Soul's Infinite entry requires landing on an exact target space; overshooting keeps it circling in the endgame zone until an exact roll lands it there.</li>
-        <li>A non-Soul piece that would complete a full circuit is captured automatically instead of completing the move.</li>
+        <li style="margin-bottom:8px;">The Soul can enter the Infinite by landing on either of the last two spaces of its circuit, once its own Body has been captured — not just an exact target space. Before that, it can't pass that threshold at all, so it can't shuttle back and forth near the end before it's unlocked.</li>
+        <li>Any piece that completes a full circuit — Soul included — simply wraps around and keeps going, rather than being captured.</li>
       </ul>
     </div>
   </div>
@@ -710,7 +710,13 @@ function getLegalMoves(color, pieceId){
     if(def.id!=='soul'){
       if(delta<0 && newProgress<0) return; // can't pass own start backward
       if(newProgress>=TRACK_LEN){
-        legal.push({delta, newProgress, kind:'self-lap-capture', masterIdx: pathToMaster(color, newProgress)});
+        // Completing a full circuit no longer captures the piece - it wraps
+        // around and keeps going, same as the Soul already does.
+        const wrapped = newProgress % TRACK_LEN;
+        const masterIdx = pathToMaster(color, wrapped);
+        const occ = occupantsAtMaster(masterIdx);
+        if(soulCaptureBlocked(occ)) return;
+        legal.push({delta, newProgress: wrapped, kind:'normal', masterIdx, occ});
         return;
       }
       const masterIdx = pathToMaster(color, newProgress);
@@ -722,14 +728,19 @@ function getLegalMoves(color, pieceId){
 
     // SOUL - no separate "endgame zone": the Soul moves like an ordinary Person piece
     // the whole time, with full normal capture rules everywhere, except for two
-    // special cases: landing on EXACTLY 36 (an absolute count from its own start,
-    // not a repeating board position) substitutes as entering the Infinite once its
-    // own Body is captured; and once it has completed a first full circuit, moving
-    // back past its own actual starting point (progress going below 0) gets it
-    // captured instead of blocked.
+    // special cases: landing on the last TWO steps of its circuit (36, or the one
+    // space before it) substitutes as entering the Infinite once its own Body is
+    // captured; and once it has completed a first full circuit, moving back past
+    // its own actual starting point (progress going below 0) gets it captured
+    // instead of blocked.
     if(!p.completedCircuit && delta<0 && newProgress<0) return; // bounded like a normal Person piece until its first circuit is complete
 
-    if(newProgress === TRACK_LEN && state.bodyCaptured[color]){
+    // Until its own Body is captured, the Soul can't pass the Infinite
+    // threshold at all - it can approach right up to it, just not go past,
+    // so it can't shuttle back and forth near the end before it's unlocked.
+    if(!state.bodyCaptured[color] && newProgress>TRACK_LEN) return;
+
+    if(newProgress>=TRACK_LEN-1 && newProgress<=TRACK_LEN && state.bodyCaptured[color]){
       legal.push({delta, newProgress, kind:'soul-win', masterIdx: pathToMaster(color, newProgress)});
       return;
     }
@@ -814,11 +825,7 @@ function performMove(color, pieceId, move){
   const p = state.pieces[color][pieceId];
   const def = getDef(pieceId);
 
-  if(move.kind==='self-lap-capture'){
-    p.status='captured';
-    log(`${def.label} (${color}) completes a full circuit and is captured.`);
-    playCaptureSound();
-  } else if(move.kind==='soul-win'){
+  if(move.kind==='soul-win'){
     p.progress = move.newProgress;
     state.winner = color;
     state.winReason = `${color==='white'?'White':'Black'}'s Soul entered the Infinite.`;
@@ -973,7 +980,6 @@ function scoreOption(color, opt){
 
   if(move.kind==='soul-win') return score + 1000000; // immediate win
   if(move.kind==='soul-overshoot-capture') return score - 200000; // self-destructs own Soul
-  if(move.kind==='self-lap-capture') return score - 40; // loses this piece for nothing
 
   // kind === 'normal'
   score += Math.abs(move.delta) * 0.5 * profile.progress * categoryWeight; // preference for making real progress, biased by category
@@ -1365,9 +1371,10 @@ function renderBoard(){
     if(legalTargets[sp.idx]){
       const move = legalTargets[sp.idx];
       // A move is flagged red rather than gold if landing there removes a
-      // piece - the opponent's, or your own (self-capture, or a non-Soul
-      // piece completing a full circuit) - so a capture is never a surprise.
-      const isCapture = move.kind==='self-lap-capture' || move.kind==='soul-overshoot-capture'
+      // piece - the opponent's, or your own (self-capture), or the Soul
+      // circling all the way back past its own start - so a capture is
+      // never a surprise.
+      const isCapture = move.kind==='soul-overshoot-capture'
         || ((move.kind==='normal' || move.kind==='bench-placement') && move.occ && move.occ.length>0);
       const ringAttrs = isCapture
         ? {d:vis.path, fill:'rgba(138,46,31,0.32)', stroke:'var(--danger)','stroke-width':5}
@@ -1497,8 +1504,9 @@ function updatePieceReference(){
     const label = color==='white' ? 'White' : 'Black';
     if(p.status==='onboard' && p.completedCircuit){
       const remaining = TRACK_LEN - p.progress;
+      const winDeltas = remaining>=1 ? `+${remaining-1} or +${remaining}` : `+${remaining}`;
       el.textContent = state.bodyCaptured[color]
-        ? `${label}'s Soul has completed its circuit and needs exactly ${remaining>0?'+':''}${remaining} to win.`
+        ? `${label}'s Soul has completed its circuit and needs ${winDeltas} to win.`
         : `${label}'s Soul has completed its circuit, but ${label}'s own Body isn't captured yet - it can't enter the Infinite until then.`;
     } else {
       el.textContent = '';
@@ -1793,9 +1801,9 @@ const HOWTO_CONTENT = {
     <p>Two ways:</p>
     <ul>
       <li>Capture the opponent's Soul.</li>
-      <li>Get your own Soul all the way around the board and land it <b>exactly</b> on the Infinite.</li>
+      <li>Get your own Soul all the way around the board and land it on the Infinite, or the space just before it.</li>
     </ul>
-    <p>The catch that ties both together: you can't capture an opponent's Soul until <b>their</b> Body has been captured, and you can't send your own Soul into the Infinite until <b>your own</b> Body has been captured. So every game has a real turning point — once a Body falls (yours or theirs), that Soul becomes both huntable <i>and</i> eligible to race for the Infinite.</p>
+    <p>The catch that ties both together: you can't capture an opponent's Soul until <b>their</b> Body has been captured, and you can't send your own Soul into the Infinite until <b>your own</b> Body has been captured. So every game has a real turning point — once a Body falls (yours or theirs), that Soul becomes both huntable <i>and</i> eligible to race for the Infinite. Until your own Body falls, your Soul can't even pass the Infinite - it'll stop right at the edge of its circuit and wait there.</p>
     <p>If 80 rounds pass with neither Body ever captured, the game is called a draw.</p>
   `,
   strategy: `
@@ -1809,7 +1817,7 @@ const HOWTO_CONTENT = {
     <h3>USE RACE PIECES AS SCOUTS, NOT TREASURES</h3>
     <p>They're worth far less than a Person piece and can only move forward, so use them to control ground, threaten a square, or soak up a capture that would otherwise land on something valuable.</p>
     <h3>DO THE MATH ON DISTANCE</h3>
-    <p>Since every move is (dice sum + a fixed bonus), you always know your exact possible distances before you commit. If your Soul needs to land exactly on the Infinite, count how far away it actually is, and keep half an eye on what it'll take to get there.</p>
+    <p>Since every move is (dice sum + a fixed bonus), you always know your exact possible distances before you commit. Your Soul can win by landing on the Infinite or the space just before it, so count how far away that pair of squares actually is, and keep half an eye on what it'll take to get there.</p>
     <h3>CHECK WHAT'S "IN RANGE" BEFORE YOU MOVE</h3>
     <p>Before settling a piece onto a square, glance at nearby enemy pieces and roughly what sums they could roll next round. It's often the whole difference between a strong square and a trap.</p>
     <h3>NOT EVERY CAPTURE IS WORTH TAKING</h3>

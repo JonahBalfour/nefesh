@@ -245,13 +245,18 @@ stakes; this tighter version keeps captures and positioning more consequential.
   condition just as an opponent's capture would.
 
 **Laps and the Infinite:**
-- Any non-Soul piece that completes a full 36-space circuit is captured.
-- The Soul is exempt from that — it can pass the Infinite and keep going,
-  shuttling forward and backward near the end of its circuit until it lands
-  on the Infinite with an exact count.
+- Any piece — Soul included — that completes a full 36-space circuit simply
+  wraps around and keeps going, rather than being captured.
 - A player may only move their Soul into the Infinite — and may only capture
   the opponent's Soul — after that player's own/opponent's Body (respectively)
   has been captured.
+- The Soul may land on either of the last two spaces of its circuit (one
+  space before completing it, or the exact completing space itself) to enter
+  the Infinite, once its own Body has been captured — not just an exact
+  count. Until its own Body is captured, though, the Soul can't pass that
+  threshold at all: it can approach right up to the end of its circuit, but
+  can't go past it, so it can't shuttle back and forth near the end before
+  it's actually unlocked.
 - This protection covers a Soul against ANY capture, including its own owner
   accidentally landing another piece on it — a Soul can't be self-captured
   until that same player's own Body has been captured, for the same reason
