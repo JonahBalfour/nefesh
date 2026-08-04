@@ -644,27 +644,68 @@ function flankBezier(cx,cy,r,angleLo,angleHi,tangentAtLo){
   };
   return {P0,C,P2};
 }
-function flankWedgePath(cx,cy,rIn,rOut,angleLo,angleHi,tangentAtLo,sLo,sHi){
+function quadBezierPoint(P0,C,P2,t){
+  const mt=1-t;
+  return { x: mt*mt*P0.x + 2*mt*t*C.x + t*t*P2.x, y: mt*mt*P0.y + 2*mt*t*C.y + t*t*P2.y };
+}
+// A quadratic bezier doesn't move at a constant rate along its length, so
+// cutting one into n equal-t pieces gives noticeably uneven widths (this is
+// what made the first version of the flank spaces look uneven/distorted).
+// This samples the curve and finds the t-values that divide it into n
+// equal-LENGTH pieces instead, so the resulting spaces read as evenly
+// sized, matching the plain circular spaces right next to them.
+function equalArcLengthSplits(P0,C,P2,n){
+  const SAMPLES = 200;
+  const pts=[]; for(let i=0;i<=SAMPLES;i++) pts.push(quadBezierPoint(P0,C,P2,i/SAMPLES));
+  const cumLen=[0];
+  for(let i=1;i<=SAMPLES;i++){
+    const dx=pts[i].x-pts[i-1].x, dy=pts[i].y-pts[i-1].y;
+    cumLen.push(cumLen[i-1]+Math.sqrt(dx*dx+dy*dy));
+  }
+  const total=cumLen[SAMPLES];
+  const splits=[0];
+  for(let i=1;i<n;i++){
+    const target=total*i/n;
+    let lo=0, hi=SAMPLES;
+    while(lo<hi){ const mid=(lo+hi)>>1; if(cumLen[mid]<target) lo=mid+1; else hi=mid; }
+    const segLen=cumLen[lo]-cumLen[lo-1];
+    const frac=segLen>0 ? (target-cumLen[lo-1])/segLen : 0;
+    splits.push((lo-1+frac)/SAMPLES);
+  }
+  splits.push(1);
+  return splits;
+}
+// Builds all n wedge paths for one flank at once, sharing a single pair of
+// smooth curves (inner + outer) split at equal-arc-length points along the
+// outer curve - not n independently-built wedges, so there's no seam or
+// unevenness between them.
+function buildFlankWedgePaths(cx,cy,rIn,rOut,angleLo,angleHi,tangentAtLo,n){
   const outer = flankBezier(cx,cy,rOut,angleLo,angleHi,tangentAtLo);
   const inner = flankBezier(cx,cy,rIn,angleLo,angleHi,tangentAtLo);
-  const [oP0,oC,oP2] = quadBezierSubsegment(outer.P0,outer.C,outer.P2,sLo,sHi);
-  const [iP0,iC,iP2] = quadBezierSubsegment(inner.P0,inner.C,inner.P2,sLo,sHi);
-  return `M ${oP0.x} ${oP0.y} Q ${oC.x} ${oC.y} ${oP2.x} ${oP2.y} `+
-         `L ${iP2.x} ${iP2.y} Q ${iC.x} ${iC.y} ${iP0.x} ${iP0.y} Z`;
+  const splits = equalArcLengthSplits(outer.P0,outer.C,outer.P2,n);
+  const paths=[];
+  for(let i=0;i<n;i++){
+    const sLo=splits[i], sHi=splits[i+1];
+    const [oP0,oC,oP2] = quadBezierSubsegment(outer.P0,outer.C,outer.P2,sLo,sHi);
+    const [iP0,iC,iP2] = quadBezierSubsegment(inner.P0,inner.C,inner.P2,sLo,sHi);
+    paths.push(`M ${oP0.x} ${oP0.y} Q ${oC.x} ${oC.y} ${oP2.x} ${oP2.y} `+
+               `L ${iP2.x} ${iP2.y} Q ${iC.x} ${iC.y} ${iP0.x} ${iP0.y} Z`);
+  }
+  return paths;
 }
-// Picks a plain circular wedge for the middle of the loop, or an eased flank
-// wedge for the FLANK_SPACES spaces nearest either end of the loop's gap.
-function loopWedgePath(cx,cy,rIn,rOut,i,a0,a1,loopStart){
-  if(i < FLANK_SPACES){
-    const angleLo=loopStart, angleHi=loopStart+FLANK_SPACES*STEP;
-    return flankWedgePath(cx,cy,rIn,rOut,angleLo,angleHi,false, i/FLANK_SPACES, (i+1)/FLANK_SPACES);
+// Builds the full set of wedge paths for one loop: a plain circular arc for
+// the middle spaces, and the evenly-eased flank curve for the FLANK_SPACES
+// spaces nearest either end of the loop's gap.
+function buildLoopWedgePaths(cx,cy,rIn,rOut,loopStart){
+  const startFlank = buildFlankWedgePaths(cx,cy,rIn,rOut, loopStart, loopStart+FLANK_SPACES*STEP, false, FLANK_SPACES);
+  const endFlank = buildFlankWedgePaths(cx,cy,rIn,rOut, loopStart+(LOOP_LEN-FLANK_SPACES)*STEP, loopStart+LOOP_LEN*STEP, true, FLANK_SPACES);
+  const paths=[];
+  for(let i=0;i<LOOP_LEN;i++){
+    if(i < FLANK_SPACES) paths.push(startFlank[i]);
+    else if(i >= LOOP_LEN-FLANK_SPACES) paths.push(endFlank[i-(LOOP_LEN-FLANK_SPACES)]);
+    else paths.push(wedgePath(cx,cy,rIn,rOut, loopStart+i*STEP, loopStart+(i+1)*STEP));
   }
-  if(i >= LOOP_LEN-FLANK_SPACES){
-    const angleLo=loopStart+(LOOP_LEN-FLANK_SPACES)*STEP, angleHi=loopStart+LOOP_LEN*STEP;
-    const localI = i-(LOOP_LEN-FLANK_SPACES);
-    return flankWedgePath(cx,cy,rIn,rOut,angleLo,angleHi,true, localI/FLANK_SPACES, (localI+1)/FLANK_SPACES);
-  }
-  return wedgePath(cx,cy,rIn,rOut,a0,a1);
+  return paths;
 }
 
 // master track: 0-15 left loop, 16-19 hub, 20-35 right loop
@@ -678,10 +719,11 @@ const VISIBLE_SPAN = (2*Math.PI) - 2*GAP_HALF_ANGLE;
 const STEP = VISIBLE_SPAN/LOOP_LEN;
 
 const leftStart = GAP_HALF_ANGLE; // just past the hub's south edge, from the left loop's own center
+const leftPaths = buildLoopWedgePaths(Lx,Ly,LOOP_R_IN,LOOP_R_OUT,leftStart);
 for(let i=0;i<LOOP_LEN;i++){
   const a0=leftStart+i*STEP, a1=leftStart+(i+1)*STEP;
   const mid = midPoint(Lx,Ly,(LOOP_R_IN+LOOP_R_OUT)/2,(a0+a1)/2);
-  MASTER.push({idx:i, x:mid.x, y:mid.y, zone:'left', shade:i%2===0?'light':'dark', path:loopWedgePath(Lx,Ly,LOOP_R_IN,LOOP_R_OUT,i,a0,a1,leftStart)});
+  MASTER.push({idx:i, x:mid.x, y:mid.y, zone:'left', shade:i%2===0?'light':'dark', path:leftPaths[i]});
 }
 const hubQuadrants = [
   {idx:16, a0:Math.PI, a1:Math.PI*1.5, half:'light', isStart:'black'},   // NW
@@ -695,10 +737,11 @@ hubQuadrants.forEach(q=>{
     path: wedgePath(Hx,Hy,HUB_R_IN,HUB_R_OUT,q.a0,q.a1)});
 });
 const rightStart = Math.PI+GAP_HALF_ANGLE; // just past the hub's north edge, from the right loop's own center
+const rightPaths = buildLoopWedgePaths(Rx,Ry,LOOP_R_IN,LOOP_R_OUT,rightStart);
 for(let i=0;i<LOOP_LEN;i++){
   const a0=rightStart+i*STEP, a1=rightStart+(i+1)*STEP;
   const mid = midPoint(Rx,Ry,(LOOP_R_IN+LOOP_R_OUT)/2,(a0+a1)/2);
-  MASTER.push({idx:20+i, x:mid.x, y:mid.y, zone:'right', shade:i%2===0?'dark':'light', path:loopWedgePath(Rx,Ry,LOOP_R_IN,LOOP_R_OUT,i,a0,a1,rightStart)});
+  MASTER.push({idx:20+i, x:mid.x, y:mid.y, zone:'right', shade:i%2===0?'dark':'light', path:rightPaths[i]});
 }
 const INFINITE_PT = {x:Hx, y:Hy};
 
@@ -1290,16 +1333,25 @@ function scoreOption(color, opt){
       if(o.pieceId==='soul') score -= 200000; // own-Soul safety is never a style choice
       else if(o.pieceId==='body' && profile.selfSacrifice && isSoulOutAndMoving(color)) score += 45; // deliberately unlock our own Soul's path to the Infinite
       else if(o.pieceId==='body') score -= 15 * profile.selfCapture * profile.ownBodyGuard; // extra-cautious about its own Body specifically
+      else if(o.pieceId==='will') score -= 300; // losing Will is permanent and shuts off every piece's bonus for good - not a style choice
       else score -= 15 * profile.selfCapture;
     } else if(o.pieceId==='soul'){
       score += 100000; // capturing the enemy Soul always wins - never a style choice
     } else if(o.pieceId==='body'){
       score += 70 * profile.capture * profile.bodyHunt; // extra fixation on the opponent's Body specifically
+    } else if(o.pieceId==='will'){
+      score += 150 * profile.capture; // crippling the opponent's whole bonus economy is close to Body-tier value
     } else {
       score += (PIECE_VALUE[o.pieceId]||20) * profile.capture;
     }
   });
   if(pieceId==='soul' && p.progress===0) score += 500 * profile.soulUrgency; // urgency: get the Soul moving
+  // Homecoming: a Race piece about to complete its circuit earns a second
+  // copy - worth actively chasing while that type hasn't earned it yet.
+  if(move.completesLap && def.category==='race'){
+    const baseId = def.baseId || def.id;
+    if(!state.homecomingGranted[color][baseId]) score += 60 * categoryWeight;
+  }
   return score;
 }
 function isSoulOutAndMoving(color){
@@ -1342,6 +1394,7 @@ function cloneGameState(s){
   return {
     round:s.round, firstMover:s.firstMover, dice:s.dice?{...s.dice}:null,
     acted:{...s.acted}, selected:null, bodyCaptured:{...s.bodyCaptured},
+    homecomingGranted:{white:{...s.homecomingGranted.white}, black:{...s.homecomingGranted.black}},
     roundsWithNoBodyCaptured:s.roundsWithNoBodyCaptured, winner:s.winner,
     winReason:s.winReason, isDraw:s.isDraw, log:[],
     pieces:{ white:cloneOne(s.pieces.white), black:cloneOne(s.pieces.black) },
@@ -2234,9 +2287,19 @@ const HOWTO_CONTENT = {
       <li><b>Person pieces</b> (Mind, Will, Body, Soul) — can move forward or backward. They start on your bench; you place them onto your Placement space when you're ready to bring them in.</li>
     </ul>
     <h3>MOVEMENT</h3>
-    <p>Every piece has a bonus (Creature +0, Dwarf +1, Man +2, Elf +3, Mind +1, Will +2, Body +3, Soul +0). Each move is <b>the sum of both dice, plus that piece's bonus</b> — always the full bonus, no partial amounts, and no other dice combinations. So if you roll a 4 and 3 (sum 7), your Elf (+3) always moves exactly 10.</p>
+    <p>Every piece has a bonus (Creature +0, Dwarf +1, Man +2, Elf +3, Mind +1, Will +2, Body +3, Soul +0). Each move is <b>the sum of both dice, plus that piece's bonus</b> — no other dice combinations. Whether the bonus is fully applied, partly applied, or not applied at all depends on Will and Mind — see below.</p>
+    <h3>WILL AND MIND: BONUSES AREN'T AUTOMATIC</h3>
+    <p>Bonuses only exist because of these two pieces:</p>
+    <ul>
+      <li><b>No Will on the board</b> (not yet placed, or captured) — none of your pieces get a bonus. Every move is dice-sum only, for your whole side.</li>
+      <li><b>Will placed and alive</b> — bonuses apply automatically, full amount, same as a normal move.</li>
+      <li><b>Will AND Mind both placed and alive</b> — you get to choose how much of the bonus to use, anywhere from 0 up to the full amount, on every move. Useful for landing exactly where you want instead of overshooting.</li>
+    </ul>
+    <p><b>Losing Will is permanent</b> — captured pieces never come back in this game. If Will is captured (by your opponent, or by your own accidental self-capture), your whole side loses its bonuses for the rest of the game. Protect Will like you'd protect Body.</p>
+    <h3>HOMECOMING: RACE PIECES CAN COME BACK STRONGER</h3>
+    <p>When a Creature, Dwarf, Man, or Elf makes it all the way around the board (a full 36-space circuit), its owner earns a second copy of that same piece — it appears on your bench, ready to be placed on your Placement space like a Person piece. Each Race type can only ever earn one extra copy this way, so if it's later captured, looping again won't earn another.</p>
     <h3>YOUR TURN</h3>
-    <p>Dice are rolled once per round, shared by both players that round. On your turn, you either place a Person piece from your bench onto your Placement space, or move one piece already on the board.</p>
+    <p>Dice are rolled once per round, shared by both players that round. On your turn, you either place a bench piece (a Person piece, or an earned extra Race piece) onto your Placement space, or move one piece already on the board.</p>
     <h3>CAPTURES</h3>
     <p>Landing on <b>any</b> occupied space — opponent's or your own — captures whatever's there, so always check what's sitting on your destination before committing to a move.</p>
     <h3>HOW TO WIN</h3>
@@ -2264,6 +2327,10 @@ const HOWTO_CONTENT = {
     <p>Before settling a piece onto a square, glance at nearby enemy pieces and roughly what sums they could roll next round. It's often the whole difference between a strong square and a trap.</p>
     <h3>NOT EVERY CAPTURE IS WORTH TAKING</h3>
     <p>A capture that leaves your Body or Soul exposed right afterward can cost you the game even if it looks tempting in the moment. Before you take it, ask: "what can they do to me right after this?"</p>
+    <h3>WILL IS A THIRD PIECE WORTH PROTECTING LIKE BODY</h3>
+    <p>Losing Will doesn't end the game the way losing Soul does, but it's permanent and it hits your whole side at once — every piece loses its bonus for the rest of the game. Treat threats to Will with the same seriousness you'd treat threats to Body.</p>
+    <h3>RACE YOUR RACE PIECES HOME</h3>
+    <p>A Creature, Dwarf, Man, or Elf that completes a full circuit earns you a second copy of it. It's a one-time reward per type, so once a piece is close to finishing its lap, think twice before trading it away for something small — finishing the lap might be worth more.</p>
   `,
   personas: `
     <p>Ten play styles, each exploitable in a different way — and a few thoughts on what changes as difficulty goes up.</p>
