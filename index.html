@@ -316,9 +316,14 @@
     .top-actions{ position:static; display:flex; gap:6px; justify-content:center; margin-bottom:4px; }
     .top-actions button{ min-height:30px; padding:5px 10px; font-size:11px; }
     .app{ flex-direction:row; flex-wrap:nowrap; gap:6px; align-items:stretch; max-width:none; }
-    .board-panel{ min-width:0; flex:1 1 auto; width:auto; padding:4px; display:flex; align-items:center; justify-content:center; max-height:calc(100vh - 42px); }
-    #board-svg{ width:auto !important; height:100% !important; max-width:100%; max-height:calc(100vh - 50px); }
-    .control-panel{ min-width:130px; max-width:165px; flex:0 0 155px; gap:6px; overflow-y:auto; max-height:calc(100vh - 42px); }
+    /* vh is the *largest* possible viewport in mobile Safari - it doesn't
+       shrink when the address bar is showing the way an installed app's
+       fullscreen viewport does. dvh tracks what's actually visible right
+       now, so it's declared second to override vh wherever it's supported,
+       with the vh value left in place as a fallback where it isn't. */
+    .board-panel{ min-width:0; flex:1 1 auto; width:auto; padding:4px; display:flex; align-items:center; justify-content:center; max-height:calc(100vh - 42px); max-height:calc(100dvh - 42px); }
+    #board-svg{ width:auto !important; height:100% !important; max-width:100%; max-height:calc(100vh - 50px); max-height:calc(100dvh - 50px); }
+    .control-panel{ min-width:130px; max-width:165px; flex:0 0 155px; gap:6px; overflow-y:auto; max-height:calc(100vh - 42px); max-height:calc(100dvh - 42px); }
     .panel-box{ padding:6px var(--sp-2); }
     .panel-title{ margin-bottom:4px; padding-bottom:3px; font-size:11px; }
     /* At this width "Round 1" and a "Now acting" pill side by side wrap into
@@ -342,16 +347,22 @@
        no way to reach the rest, including the Start Game button. Let the
        overlay itself scroll and top-align instead of centering, and trim
        the box's padding so more of it is visible without scrolling at all. */
-    .overlay{ align-items:flex-start; overflow-y:auto; padding:var(--sp-3) 0; -webkit-overflow-scrolling:touch; }
-    .overlay-box{ margin:0 auto; max-height:none; padding:var(--sp-4) var(--sp-5) !important; max-width:min(92vw, 640px) !important; }
-    .overlay-box h2{ font-size:var(--fs-xl); }
-    .overlay-box .row[style*="margin-bottom:var(--sp-4)"]{ margin-bottom:var(--sp-2) !important; }
+    .overlay{ align-items:flex-start; overflow-y:auto; padding:6px 0; -webkit-overflow-scrolling:touch; }
+    .overlay-box{ margin:0 auto; max-height:none; padding:10px var(--sp-4) !important; max-width:min(92vw, 640px) !important; }
+    .overlay-box h2{ font-size:var(--fs-lg); }
+    .overlay-box .row[style*="margin-bottom:var(--sp-4)"]{ margin-bottom:6px !important; }
     /* New Game's mode list and (once a Computer opponent is picked) its
        persona/difficulty pickers stack tall enough on their own to force a
        scroll on a short screen even at this width - side by side they fit
-       one landscape phone screen with room to spare. */
-    #setup-body{ display:flex; gap:var(--sp-5); align-items:flex-start; }
-    #setup-mode-list, #setup-picker{ flex:1 1 0; margin-bottom:var(--sp-3) !important; }
+       one landscape phone screen with room to spare. Kept deliberately
+       tight (small gaps, shorter selects) since an installed app's
+       fullscreen viewport has noticeably more room than the same phone's
+       browser tab, whose address-bar chrome eats into the space above. */
+    #setup-body{ display:flex; gap:var(--sp-3); align-items:flex-start; }
+    #setup-mode-list, #setup-picker{ flex:1 1 0; margin-bottom:6px !important; gap:6px !important; }
+    #setup-picker .select-field{ min-height:32px; padding:4px var(--sp-2); }
+    #setup-picker > div{ margin-bottom:4px !important; margin-top:4px !important; }
+    #setup-start-btn{ min-height:36px; padding:8px var(--sp-4); }
     #howto-overlay .overlay-box, #menu-overlay .overlay-box{ max-width:min(94vw, 820px) !important; }
   }
   .rotate-icon{
