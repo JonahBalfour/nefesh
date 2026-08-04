@@ -92,11 +92,12 @@
   .board-panel{
     flex:1 1 560px;
     min-width:560px;
-    /* A very faint fractal-noise grain layered under the existing wood
-       gradient - just enough to read as a real wood surface up close
-       instead of a flat CSS gradient, without competing with the board. */
+    /* Fractal-noise grain layered under the existing wood gradient, so it
+       reads as a real wood surface instead of a flat CSS gradient. Streaked
+       (low frequency along x, higher along y) rather than uniform static so
+       it reads as long horizontal grain lines, the way real wood does. */
     background-image:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.35' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.16 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
       linear-gradient(180deg,var(--wood-light),var(--wood));
     border:1px solid #5c422c;
     border-radius:var(--radius-lg);
@@ -1933,12 +1934,18 @@ function renderBoard(){
   // on top, with no clipping - so it completely covers whatever loop material
   // sits underneath it at the seam, instead of the hub being the one cut back.
   const renderOrder = [...MASTER.filter(s=>s.zone!=='hub'), ...MASTER.filter(s=>s.zone==='hub')];
+  // The hub's shadow needs to wrap all 4 quadrants as ONE shape, not each
+  // quadrant separately - filtering each quadrant on its own gave every
+  // internal seam its own overlapping shadow, which showed up as faint
+  // ghost edges bleeding across the hub. hubGroup collects the quadrants
+  // and gets the single shared filter, appended once after the loop below.
+  const hubGroup = el('g',{filter:'url(#hubShadow)'});
   renderOrder.forEach(sp=>{
     const vis = visualMaster(sp.idx); // where this space actually draws - itself, unless the board is turned to face Black
     const isHub = sp.zone==='hub';
     // outside the hub, spaces always alternate; inside the hub, top pair is light and bottom pair is dark (not alternating)
     const fill = isHub ? (sp.half==='light' ? '#e9dcc0' : '#181410') : (sp.shade==='dark' ? '#181410' : '#e9dcc0');
-    const g = isHub ? el('g',{filter:'url(#hubShadow)'}) : el('g',{});
+    const g = el('g',{});
     const wedgeAttrs = {d:vis.path, fill, stroke:'#5c422c','stroke-width':2.8};
     const wedge = el('path',wedgeAttrs);
     g.appendChild(wedge);
@@ -1976,8 +1983,10 @@ function renderBoard(){
       g.addEventListener('click',handler);
       g.appendChild(ring);
     }
-    svg.appendChild(g);
+    if(isHub) hubGroup.appendChild(g);
+    else svg.appendChild(g);
   });
+  svg.appendChild(hubGroup);
 
   // A soft rim-lit sheen over each loop and the hub, on top of the flat
   // checkered wedges - reads as one gently domed surface per zone instead
