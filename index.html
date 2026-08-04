@@ -749,6 +749,31 @@ function buildLoopWedgePaths(cx,cy,rIn,rOut,loopStart){
   }
   return paths;
 }
+// One continuous outline of a whole loop's TRUE current shape - eased
+// flanks near the hub, plain circle for the rest - built from the exact
+// same curves as buildFlankWedgePaths/wedgePath. Used for the lighting
+// "sheen" overlay so it can never peek out past the real space boundaries
+// (a plain full-circle annulus doesn't fit anymore now the flanks are
+// eased inward - that's what caused the stray ghost-of-the-old-circle look).
+function loopSheenPath(cx,cy,rIn,rOut,loopStart){
+  const angleMidLo = loopStart+FLANK_SPACES*STEP, angleMidHi = loopStart+(LOOP_LEN-FLANK_SPACES)*STEP;
+  const gapLo = loopStart, gapHi = loopStart+LOOP_LEN*STEP;
+  const midLarge = (angleMidHi-angleMidLo) > Math.PI ? 1 : 0;
+  const ptAt=(r,a)=>({x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)});
+  const outerStart = flankBezier(cx,cy,rOut,gapLo,angleMidLo,false);
+  const outerEnd   = flankBezier(cx,cy,rOut,angleMidHi,gapHi,true);
+  const innerStart = flankBezier(cx,cy,rIn, gapLo,angleMidLo,false);
+  const innerEnd   = flankBezier(cx,cy,rIn, angleMidHi,gapHi,true);
+  const oMid2 = ptAt(rOut,angleMidHi), iMid1 = ptAt(rIn,angleMidLo), iMid2 = ptAt(rIn,angleMidHi);
+  return `M ${outerStart.P0.x} ${outerStart.P0.y} `+
+         `Q ${outerStart.C.x} ${outerStart.C.y} ${outerStart.P2.x} ${outerStart.P2.y} `+
+         `A ${rOut} ${rOut} 0 ${midLarge} 1 ${oMid2.x} ${oMid2.y} `+
+         `Q ${outerEnd.C.x} ${outerEnd.C.y} ${outerEnd.P2.x} ${outerEnd.P2.y} `+
+         `L ${innerEnd.P2.x} ${innerEnd.P2.y} `+
+         `Q ${innerEnd.C.x} ${innerEnd.C.y} ${iMid2.x} ${iMid2.y} `+
+         `A ${rIn} ${rIn} 0 ${midLarge} 0 ${iMid1.x} ${iMid1.y} `+
+         `Q ${innerStart.C.x} ${innerStart.C.y} ${innerStart.P0.x} ${innerStart.P0.y} Z`;
+}
 
 // master track: 0-15 left loop, 16-19 hub, 20-35 right loop
 const MASTER = [];
@@ -1957,10 +1982,14 @@ function renderBoard(){
   // A soft rim-lit sheen over each loop and the hub, on top of the flat
   // checkered wedges - reads as one gently domed surface per zone instead
   // of a stack of flat tiles. Non-interactive, so it never gets in the way
-  // of clicking the spaces underneath it.
-  [[Lx,Ly,LOOP_R_IN,LOOP_R_OUT],[Rx,Ry,LOOP_R_IN,LOOP_R_OUT],[Hx,Hy,HUB_R_IN,HUB_R_OUT]].forEach(([cx,cy,rIn,rOut])=>{
-    svg.appendChild(el('path',{d:annulusPath(cx,cy,rIn,rOut), 'fill-rule':'evenodd', fill:'url(#sheenGrad)', 'pointer-events':'none'}));
-  });
+  // of clicking the spaces underneath it. The loops use their true eased
+  // outline (loopSheenPath), not a plain circle - a plain circle no longer
+  // matches the flattened flanks and shows as a stray sliver of the old
+  // fully-round shape peeking out near the hub. The hub itself is still a
+  // plain circle, so it keeps the simple annulus.
+  svg.appendChild(el('path',{d:loopSheenPath(Lx,Ly,LOOP_R_IN,LOOP_R_OUT,leftStart), fill:'url(#sheenGrad)', 'pointer-events':'none'}));
+  svg.appendChild(el('path',{d:loopSheenPath(Rx,Ry,LOOP_R_IN,LOOP_R_OUT,rightStart), fill:'url(#sheenGrad)', 'pointer-events':'none'}));
+  svg.appendChild(el('path',{d:annulusPath(Hx,Hy,HUB_R_IN,HUB_R_OUT), 'fill-rule':'evenodd', fill:'url(#sheenGrad)', 'pointer-events':'none'}));
 
   // infinite: one plain circle, with a subtle diagonal guideline hinting at the crossing
   const infG = el('g',{});
