@@ -1,12 +1,21 @@
-// Minimal offline cache for Nefesh - cache-first for same-origin GET requests.
-// Bump CACHE_NAME whenever nefesh.html changes meaningfully so old clients pick
-// up the new version instead of being stuck on a stale cached copy.
-const CACHE_NAME = 'nefesh-cache-v1';
+// Minimal offline cache for Nefesh - cache-first for GET requests, including
+// cross-origin ones (the Google Fonts stylesheet/font files), which the
+// previous version explicitly skipped, silently requiring a live connection
+// every load just to render text. Bump CACHE_NAME whenever index.html
+// changes meaningfully so old clients pick up the new version instead of
+// being stuck on a stale cached copy.
+const CACHE_NAME = 'nefesh-cache-v2';
 const PRECACHE_URLS = [
-  './nefesh.html',
+  './index.html',
   './manifest.json',
+  './icons/favicon-32.png',
+  './icons/icon-180.png',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './sounds/dice.m4a',
+  './sounds/move.ogg',
+  './sounds/capture.ogg',
+  './sounds/win.ogg'
 ];
 
 self.addEventListener('install', (event) => {
@@ -28,12 +37,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
+  // Google Fonts' font FILES (fonts.gstatic.com) are fetched as opaque
+  // cross-origin responses, which can still be cached and replayed offline
+  // even though their status can't be inspected - only their own stylesheet
+  // origin (fonts.googleapis.com) returns a normal, inspectable response.
+  const isFontHost = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const network = fetch(event.request).then((response) => {
-        if (response && response.ok) {
+        const cacheable = response && (response.ok || (isFontHost && response.type === 'opaque'));
+        if (cacheable) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }

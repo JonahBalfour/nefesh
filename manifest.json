@@ -2,7 +2,7 @@
   "name": "Nefesh",
   "short_name": "Nefesh",
   "description": "A prototype board game from a fantasy western novel — click to place, move, and capture.",
-  "start_url": "./nefesh.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

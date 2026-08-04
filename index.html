@@ -203,11 +203,19 @@
   .dice-row{display:flex; gap:var(--sp-3); align-items:center; margin:var(--sp-2) 0;}
   .die{
     width:44px;height:44px;border-radius:var(--radius-sm);
-    background:linear-gradient(155deg,#fbf5e6,var(--parchment)); color:var(--ink);
-    display:flex; align-items:center; justify-content:center;
-    font-size:20px; font-weight:700; border:1px solid #8a7757;
+    background:linear-gradient(155deg,#fbf5e6,var(--parchment));
+    border:1px solid #8a7757;
     box-shadow:0 2px 4px rgba(0,0,0,0.4), var(--bevel-top);
+    display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr);
+    padding:6px; gap:1px;
   }
+  .die .pip{
+    width:100%; aspect-ratio:1; border-radius:50%;
+    background:var(--ink); align-self:center; justify-self:center;
+  }
+  .die .pip.p1{grid-area:1/1;} .die .pip.p2{grid-area:1/3;}
+  .die .pip.p3{grid-area:2/1;} .die .pip.p4{grid-area:2/2;} .die .pip.p5{grid-area:2/3;}
+  .die .pip.p6{grid-area:3/1;} .die .pip.p7{grid-area:3/3;}
   .move-options{display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-2);}
   .move-chip{
     background:#2c2018; border:1px solid var(--gold); color:var(--cream);
@@ -1391,6 +1399,20 @@ let simulatingBot = false; // true while the bot is exploring hypothetical moves
 // pieces sliding to their new spot instead of popping there on every re-render.
 let piecePositions = {};
 
+// Standard 3x3 dice-pip layout, positions numbered left-to-right/top-to-bottom
+// (no p4 in the layout means no middle-row-center use beyond value 1/3/5).
+const DIE_PIPS = {
+  1:[4], 2:[1,7], 3:[1,4,7], 4:[1,2,6,7], 5:[1,2,4,6,7], 6:[1,2,3,5,6,7]
+};
+function renderDieFace(elId, value){
+  const el = document.getElementById(elId);
+  el.innerHTML = '';
+  if(!value) return;
+  (DIE_PIPS[value]||[]).forEach(p=>{
+    el.appendChild(el.ownerDocument.createElement('span')).className = 'pip p'+p;
+  });
+}
+
 function render(){
   if(simulatingBot) return;
   renderBoard();
@@ -1827,8 +1849,8 @@ function renderControls(){
     pill.textContent = (mover==='white'?'White':'Black') + (mover===botColor ? ` (${botPersona.name} · ${botDifficulty.name})` : '');
     pill.className = 'pill '+mover;
   }
-  document.getElementById('die1').textContent = state.dice? state.dice.d1 : '–';
-  document.getElementById('die2').textContent = state.dice? state.dice.d2 : '–';
+  renderDieFace('die1', state.dice ? state.dice.d1 : null);
+  renderDieFace('die2', state.dice ? state.dice.d2 : null);
 
   const opts = diceBaseOptions();
   document.getElementById('move-options').innerHTML = opts.length
