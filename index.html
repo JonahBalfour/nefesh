@@ -343,7 +343,16 @@
        overlay itself scroll and top-align instead of centering, and trim
        the box's padding so more of it is visible without scrolling at all. */
     .overlay{ align-items:flex-start; overflow-y:auto; padding:var(--sp-3) 0; -webkit-overflow-scrolling:touch; }
-    .overlay-box{ margin:0 auto; max-height:none; padding:var(--sp-4) var(--sp-5) !important; }
+    .overlay-box{ margin:0 auto; max-height:none; padding:var(--sp-4) var(--sp-5) !important; max-width:min(92vw, 640px) !important; }
+    .overlay-box h2{ font-size:var(--fs-xl); }
+    .overlay-box .row[style*="margin-bottom:var(--sp-4)"]{ margin-bottom:var(--sp-2) !important; }
+    /* New Game's mode list and (once a Computer opponent is picked) its
+       persona/difficulty pickers stack tall enough on their own to force a
+       scroll on a short screen even at this width - side by side they fit
+       one landscape phone screen with room to spare. */
+    #setup-body{ display:flex; gap:var(--sp-5); align-items:flex-start; }
+    #setup-mode-list, #setup-picker{ flex:1 1 0; margin-bottom:var(--sp-3) !important; }
+    #howto-overlay .overlay-box, #menu-overlay .overlay-box{ max-width:min(94vw, 820px) !important; }
   }
   .rotate-icon{
     width:64px; height:64px; border:3px solid var(--gold-bright); border-radius:8px;
@@ -430,19 +439,21 @@
       <h2 style="margin:0;">New Game</h2>
       <button id="setup-close-btn" class="btn-sm">Close</button>
     </div>
-    <div style="display:flex; flex-direction:column; gap:var(--sp-2); font-size:var(--fs-base); margin-bottom:var(--sp-4);">
-      <label><input type="radio" name="setup-mode" value="pvp" checked> Two players (pass &amp; play)</label>
-      <label><input type="radio" name="setup-mode" value="bot-black"> Play as White vs Computer</label>
-      <label><input type="radio" name="setup-mode" value="bot-white"> Play as Black vs Computer</label>
-    </div>
-    <div id="setup-picker" style="display:none; margin-bottom:var(--sp-4);">
-      <div style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-bottom:var(--sp-2);">Play style:</div>
-      <select id="setup-persona-select" class="select-field"></select>
-      <div id="setup-persona-blurb" style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-top:var(--sp-2); margin-bottom:var(--sp-3); font-style:italic;"></div>
+    <div id="setup-body">
+      <div id="setup-mode-list" style="display:flex; flex-direction:column; gap:var(--sp-2); font-size:var(--fs-base); margin-bottom:var(--sp-4);">
+        <label><input type="radio" name="setup-mode" value="pvp" checked> Two players (pass &amp; play)</label>
+        <label><input type="radio" name="setup-mode" value="bot-black"> Play as White vs Computer</label>
+        <label><input type="radio" name="setup-mode" value="bot-white"> Play as Black vs Computer</label>
+      </div>
+      <div id="setup-picker" style="display:none; margin-bottom:var(--sp-4);">
+        <div style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-bottom:var(--sp-2);">Play style:</div>
+        <select id="setup-persona-select" class="select-field"></select>
+        <div id="setup-persona-blurb" style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-top:var(--sp-2); margin-bottom:var(--sp-3); font-style:italic;"></div>
 
-      <div style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-bottom:var(--sp-2);">Difficulty:</div>
-      <select id="setup-difficulty-select" class="select-field"></select>
-      <div id="setup-difficulty-blurb" style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-top:var(--sp-2); font-style:italic;"></div>
+        <div style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-bottom:var(--sp-2);">Difficulty:</div>
+        <select id="setup-difficulty-select" class="select-field"></select>
+        <div id="setup-difficulty-blurb" style="font-size:var(--fs-xs); color:var(--parchment-dim); margin-top:var(--sp-2); font-style:italic;"></div>
+      </div>
     </div>
     <button id="setup-start-btn" class="btn-primary" style="width:100%;">Start Game</button>
   </div>
