@@ -92,7 +92,12 @@
   .board-panel{
     flex:1 1 560px;
     min-width:560px;
-    background:linear-gradient(180deg,var(--wood-light),var(--wood));
+    /* A very faint fractal-noise grain layered under the existing wood
+       gradient - just enough to read as a real wood surface up close
+       instead of a flat CSS gradient, without competing with the board. */
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+      linear-gradient(180deg,var(--wood-light),var(--wood));
     border:1px solid #5c422c;
     border-radius:var(--radius-lg);
     padding:var(--sp-4);
@@ -602,6 +607,43 @@ function wedgePath(cx,cy,rIn,rOut,a0,a1){
   const o0=p(rOut,a0), o1=p(rOut,a1), i1=p(rIn,a1), i0=p(rIn,a0);
   return `M ${o0.x} ${o0.y} A ${rOut} ${rOut} 0 ${large} 1 ${o1.x} ${o1.y} `+
          `L ${i1.x} ${i1.y} A ${rIn} ${rIn} 0 ${large} 0 ${i0.x} ${i0.y} Z`;
+}
+// A full ring (outer circle minus inner circle, via evenodd) - used for the
+// soft lighting "sheen" laid over each loop/hub, so it reads as one gently
+// domed surface instead of a flat set of tiles, without needing a separate
+// gradient per wedge.
+function annulusPath(cx,cy,rIn,rOut){
+  return `M ${cx-rOut} ${cy} A ${rOut} ${rOut} 0 1 0 ${cx+rOut} ${cy} A ${rOut} ${rOut} 0 1 0 ${cx-rOut} ${cy} Z `+
+         `M ${cx-rIn} ${cy} A ${rIn} ${rIn} 0 1 0 ${cx+rIn} ${cy} A ${rIn} ${rIn} 0 1 0 ${cx-rIn} ${cy} Z`;
+}
+// One-time visual defs (gradients + drop-shadow filters) for the fake-3D
+// pass: glossy radial-gradient piece tokens with a soft drop shadow so they
+// look raised off the board, a subtle rim-lit "sheen" for the loops/hub so
+// the board itself reads as gently domed rather than flat tiles, and a
+// slightly heavier shadow under the hub so it visibly sits above the loops
+// (it's already drawn on top, per the seam-covering trick above).
+function buildBoardDefs(){
+  const defs = el('defs',{});
+  const shadow = (id,dy,blur,opacity)=>{
+    const f = el('filter',{id, x:'-60%', y:'-60%', width:'220%', height:'220%'});
+    f.appendChild(el('feDropShadow',{dx:0, dy, stdDeviation:blur, 'flood-color':'#000000', 'flood-opacity':opacity}));
+    return f;
+  };
+  defs.appendChild(shadow('pieceShadow', 2.5, 2.2, 0.45));
+  defs.appendChild(shadow('hubShadow', 3, 3.5, 0.4));
+  const radial = (id,cx,cy,r,stops)=>{
+    const g = el('radialGradient',{id,cx,cy,r});
+    stops.forEach(([offset,color,opacity])=>{
+      const attrs = {offset, 'stop-color':color};
+      if(opacity!==undefined) attrs['stop-opacity']=opacity;
+      g.appendChild(el('stop',attrs));
+    });
+    return g;
+  };
+  defs.appendChild(radial('whitePieceGrad','35%','30%','75%',[['0%','#fffaf0'],['55%','#f4ecd8'],['100%','#d9c9a0']]));
+  defs.appendChild(radial('blackPieceGrad','35%','30%','75%',[['0%','#3f3833'],['55%','#141110'],['100%','#040302']]));
+  defs.appendChild(radial('sheenGrad','32%','24%','80%',[['0%','#ffffff',0.16],['55%','#ffffff',0.03],['100%','#000000',0.14]]));
+  return defs;
 }
 function midPoint(cx,cy,r,a){ return {x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)}; }
 
@@ -1506,14 +1548,35 @@ function mctsCreateNode(s, parent, incomingAction){
   }
   return node;
 }
-function mctsUctScore(child, parentVisits){
+// Progressive bias: nudges re-visits toward options that LOOK good by the
+// same heuristic (scoreOption) that already flavors rollouts, without ever
+// overriding real evidence - an unvisited child is always Infinity (so the
+// first pass across every option stays uniform), and this term's weight
+// shrinks as 1/(1+visits), fading out once a child has actually been tried
+// enough for its simulated win rate to mean something. Added because plain
+// UCT, at iteration counts a live game can afford, sometimes lets a
+// heuristically-terrible move (e.g. a pointless self-capture) end up with
+// as many visits as anything else purely from early noise.
+const MCTS_PROGRESSIVE_BIAS_WEIGHT = 2;
+function mctsProgressiveBias(parentState, parentMover, incomingAction, visits){
+  if(!parentMover || !incomingAction || incomingAction.type===undefined) return 0; // no mover (chance node) or this is a dice roll, not a scoreable action
+  const real = state;
+  try{
+    state = parentState;
+    const raw = scoreOption(parentMover, incomingAction);
+    return MCTS_PROGRESSIVE_BIAS_WEIGHT * Math.tanh(raw/100) / (1+visits);
+  } finally { state = real; }
+}
+function mctsUctScore(child, parentVisits, parentState, parentMover){
   if(child.visits===0) return Infinity;
-  return (child.value/child.visits) + MCTS_EXPLORATION_C*Math.sqrt(Math.log(parentVisits)/child.visits);
+  return (child.value/child.visits)
+    + MCTS_EXPLORATION_C*Math.sqrt(Math.log(parentVisits)/child.visits)
+    + mctsProgressiveBias(parentState, parentMover, child.incomingAction, child.visits);
 }
 function mctsSelectBestChild(node){
   let best=null, bestScore=-Infinity;
   for(const child of node.children.values()){
-    const sc = mctsUctScore(child, node.visits);
+    const sc = mctsUctScore(child, node.visits, node.state, node.mover);
     if(sc>bestScore){ bestScore=sc; best=child; }
   }
   return best;
@@ -1817,6 +1880,7 @@ function blackDirectionOnLoop(loopIdentity){
 
 function renderBoard(){
   svg.innerHTML='';
+  svg.appendChild(buildBoardDefs());
 
   let legalTargets = {};
   let winMove = null;
@@ -1849,7 +1913,7 @@ function renderBoard(){
     const isHub = sp.zone==='hub';
     // outside the hub, spaces always alternate; inside the hub, top pair is light and bottom pair is dark (not alternating)
     const fill = isHub ? (sp.half==='light' ? '#e9dcc0' : '#181410') : (sp.shade==='dark' ? '#181410' : '#e9dcc0');
-    const g = el('g',{});
+    const g = isHub ? el('g',{filter:'url(#hubShadow)'}) : el('g',{});
     const wedgeAttrs = {d:vis.path, fill, stroke:'#5c422c','stroke-width':2.8};
     const wedge = el('path',wedgeAttrs);
     g.appendChild(wedge);
@@ -1888,6 +1952,14 @@ function renderBoard(){
       g.appendChild(ring);
     }
     svg.appendChild(g);
+  });
+
+  // A soft rim-lit sheen over each loop and the hub, on top of the flat
+  // checkered wedges - reads as one gently domed surface per zone instead
+  // of a stack of flat tiles. Non-interactive, so it never gets in the way
+  // of clicking the spaces underneath it.
+  [[Lx,Ly,LOOP_R_IN,LOOP_R_OUT],[Rx,Ry,LOOP_R_IN,LOOP_R_OUT],[Hx,Hy,HUB_R_IN,HUB_R_OUT]].forEach(([cx,cy,rIn,rOut])=>{
+    svg.appendChild(el('path',{d:annulusPath(cx,cy,rIn,rOut), 'fill-rule':'evenodd', fill:'url(#sheenGrad)', 'pointer-events':'none'}));
   });
 
   // infinite: one plain circle, with a subtle diagonal guideline hinting at the crossing
@@ -1948,8 +2020,8 @@ function renderBoard(){
       const vis = visualMaster(m);
       const pt = {x: vis.x, y: vis.y};
       const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
-      const g = el('g',{style:'cursor:pointer'});
-      const fill = color==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
+      const g = el('g',{style:'cursor:pointer', filter:'url(#pieceShadow)'});
+      const fill = color==='white' ? 'url(#whitePieceGrad)' : 'url(#blackPieceGrad)';
       const textColor = color==='white' ? '#1C1712' : '#efe3c8';
       g.appendChild(el('circle',{cx:pt.x, cy:pt.y, r:18, fill, stroke: isSel?'var(--gold-bright)':'#8a7757', 'stroke-width': isSel?4.2:2.2}));
       const t = el('text',{x:pt.x, y:pt.y+5, 'text-anchor':'middle', 'font-size':14, fill:textColor, 'font-weight':'700'});
@@ -2038,13 +2110,13 @@ function renderBenchTray(color){
   const g = el('g',{});
   g.appendChild(el('rect',{x, y, width:BENCH_TRAY_W, height:BENCH_TRAY_H, rx:8, fill:'#2c2018', stroke:'#5c422c', 'stroke-width':3}));
   const benchPieces = PIECE_DEFS.filter(d=>state.pieces[color][d.id].status==='bench');
-  const fill = color==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
+  const fill = color==='white' ? 'url(#whitePieceGrad)' : 'url(#blackPieceGrad)';
   const textColor = color==='white' ? '#1C1712' : '#efe3c8';
   const pitch = 48, r = 18;
   benchPieces.forEach((def,i)=>{
     const cx = x + 26 + i*pitch, cy = y + BENCH_TRAY_H/2;
     const isSel = state.selected && state.selected.color===color && state.selected.pieceId===def.id;
-    const pg = el('g',{style: canAct ? 'cursor:pointer' : '', opacity: canAct?1:0.55});
+    const pg = el('g',{style: canAct ? 'cursor:pointer' : '', opacity: canAct?1:0.55, filter:'url(#pieceShadow)'});
     pg.appendChild(el('circle',{cx, cy, r, fill, stroke: isSel?'var(--gold-bright)':'#8a7757', 'stroke-width': isSel?4.2:2.2}));
     const t = el('text',{x:cx, y:cy+5, 'text-anchor':'middle','font-size':14, fill:textColor,'font-weight':'700'});
     t.textContent = def.abbr;
@@ -2077,9 +2149,9 @@ function renderCapturedRow(zoneColor){
   const growRight = bottom; // bench sits right when bottom, left when top - captured takes the other side
   const r = 18, pitch = 48;
   const startX = growRight ? (TRAY_MARGIN + r) : (840 - TRAY_MARGIN - r);
-  const fill = pieceColor==='white' ? 'var(--white-piece)' : 'var(--black-piece)';
+  const fill = pieceColor==='white' ? 'url(#whitePieceGrad)' : 'url(#blackPieceGrad)';
   const textColor = pieceColor==='white' ? '#1C1712' : '#efe3c8';
-  const g = el('g',{});
+  const g = el('g',{filter:'url(#pieceShadow)'});
   capturedPieces.forEach((def,i)=>{
     const cx = growRight ? startX + i*pitch : startX - i*pitch;
     g.appendChild(el('circle',{cx, cy, r, fill, stroke:'#8a7757','stroke-width':2.2}));
