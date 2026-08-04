@@ -554,6 +554,12 @@ const PIECE_DEFS = [
   {id:'will',     label:'Will',     abbr:'W', category:'person', bonus:2},
   {id:'body',     label:'Body',     abbr:'B', category:'person', bonus:3},
   {id:'soul',     label:'Soul',     abbr:'S', category:'person', bonus:0},
+  // Homecoming extra copies: start locked (unplaceable) until their base
+  // piece completes a full circuit - see triggerHomecoming.
+  {id:'creature2', label:'Creature', abbr:'C2', category:'race', bonus:0, isExtra:true, baseId:'creature'},
+  {id:'dwarf2',    label:'Dwarf',    abbr:'D2', category:'race', bonus:1, isExtra:true, baseId:'dwarf'},
+  {id:'man2',      label:'Man',      abbr:'M2', category:'race', bonus:2, isExtra:true, baseId:'man'},
+  {id:'elf2',      label:'Elf',      abbr:'E2', category:'race', bonus:3, isExtra:true, baseId:'elf'},
 ];
 function getDef(id){ return PIECE_DEFS.find(p=>p.id===id); }
 
@@ -599,6 +605,68 @@ function wedgePath(cx,cy,rIn,rOut,a0,a1){
 }
 function midPoint(cx,cy,r,a){ return {x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)}; }
 
+// --- "flank" wedges: the handful of spaces closest to the hub on each loop,
+// eased from the loop's normal circular curve toward straighter (per
+// playtester feedback - the crossing should read more like a figure-8
+// racetrack than two circles touching). Only the FLANK_SPACES spaces
+// nearest the gap on each side are affected; everything else on the loop
+// stays a plain circular arc, exactly as before.
+const FLANK_SPACES = 3;
+const FLANK_HANDLE_FRAC = 0.3; // how far the ease reaches - tuned by eye, matched to the approved mockup
+
+function lerpPt(p,q,t){ return {x:p.x+(q.x-p.x)*t, y:p.y+(q.y-p.y)*t}; }
+// Standard De Casteljau subdivision: given a quadratic bezier (P0,C,P2) valid
+// for s in [0,1], returns the [P0,C,P2] of the same curve restricted to
+// s in [a,b] (0<=a<b<=1) - used to carve one smooth eased curve into the
+// individual space boundaries that make it up, without introducing any new
+// corners between them.
+function quadBezierSubsegment(P0,C,P2,a,b){
+  const A1=lerpPt(P0,C,a), B1=lerpPt(C,P2,a), M1=lerpPt(A1,B1,a);
+  const s = (b-a)/(1-a);
+  const A2=lerpPt(M1,B1,s), B2=lerpPt(B1,P2,s), M2=lerpPt(A2,B2,s);
+  return [M1, A2, M2];
+}
+// The eased boundary curve for one radius (inner or outer) of a flank zone.
+// angleLo/angleHi bound the whole flank (all FLANK_SPACES spaces together);
+// tangentAtLo says which end still meets the round part of the loop - the
+// curve leaves that end along the circle's own tangent direction (so there's
+// no corner there) and eases toward the free/gap end at the other side.
+function flankBezier(cx,cy,r,angleLo,angleHi,tangentAtLo){
+  const ptAt=(a)=>({x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)});
+  const P0=ptAt(angleLo), P2=ptAt(angleHi);
+  const tangentAngle = tangentAtLo ? angleLo : angleHi;
+  const tangentPt = tangentAtLo ? P0 : P2;
+  const sign = tangentAtLo ? 1 : -1;
+  const k = r*FLANK_HANDLE_FRAC;
+  const C = {
+    x: tangentPt.x + k*(-Math.sin(tangentAngle)*sign),
+    y: tangentPt.y + k*( Math.cos(tangentAngle)*sign)
+  };
+  return {P0,C,P2};
+}
+function flankWedgePath(cx,cy,rIn,rOut,angleLo,angleHi,tangentAtLo,sLo,sHi){
+  const outer = flankBezier(cx,cy,rOut,angleLo,angleHi,tangentAtLo);
+  const inner = flankBezier(cx,cy,rIn,angleLo,angleHi,tangentAtLo);
+  const [oP0,oC,oP2] = quadBezierSubsegment(outer.P0,outer.C,outer.P2,sLo,sHi);
+  const [iP0,iC,iP2] = quadBezierSubsegment(inner.P0,inner.C,inner.P2,sLo,sHi);
+  return `M ${oP0.x} ${oP0.y} Q ${oC.x} ${oC.y} ${oP2.x} ${oP2.y} `+
+         `L ${iP2.x} ${iP2.y} Q ${iC.x} ${iC.y} ${iP0.x} ${iP0.y} Z`;
+}
+// Picks a plain circular wedge for the middle of the loop, or an eased flank
+// wedge for the FLANK_SPACES spaces nearest either end of the loop's gap.
+function loopWedgePath(cx,cy,rIn,rOut,i,a0,a1,loopStart){
+  if(i < FLANK_SPACES){
+    const angleLo=loopStart, angleHi=loopStart+FLANK_SPACES*STEP;
+    return flankWedgePath(cx,cy,rIn,rOut,angleLo,angleHi,false, i/FLANK_SPACES, (i+1)/FLANK_SPACES);
+  }
+  if(i >= LOOP_LEN-FLANK_SPACES){
+    const angleLo=loopStart+(LOOP_LEN-FLANK_SPACES)*STEP, angleHi=loopStart+LOOP_LEN*STEP;
+    const localI = i-(LOOP_LEN-FLANK_SPACES);
+    return flankWedgePath(cx,cy,rIn,rOut,angleLo,angleHi,true, localI/FLANK_SPACES, (localI+1)/FLANK_SPACES);
+  }
+  return wedgePath(cx,cy,rIn,rOut,a0,a1);
+}
+
 // master track: 0-15 left loop, 16-19 hub, 20-35 right loop
 const MASTER = [];
 // The hub's footprint covers roughly 54 degrees of each loop's circle (verified by
@@ -613,7 +681,7 @@ const leftStart = GAP_HALF_ANGLE; // just past the hub's south edge, from the le
 for(let i=0;i<LOOP_LEN;i++){
   const a0=leftStart+i*STEP, a1=leftStart+(i+1)*STEP;
   const mid = midPoint(Lx,Ly,(LOOP_R_IN+LOOP_R_OUT)/2,(a0+a1)/2);
-  MASTER.push({idx:i, x:mid.x, y:mid.y, zone:'left', shade:i%2===0?'light':'dark', path:wedgePath(Lx,Ly,LOOP_R_IN,LOOP_R_OUT,a0,a1)});
+  MASTER.push({idx:i, x:mid.x, y:mid.y, zone:'left', shade:i%2===0?'light':'dark', path:loopWedgePath(Lx,Ly,LOOP_R_IN,LOOP_R_OUT,i,a0,a1,leftStart)});
 }
 const hubQuadrants = [
   {idx:16, a0:Math.PI, a1:Math.PI*1.5, half:'light', isStart:'black'},   // NW
@@ -630,7 +698,7 @@ const rightStart = Math.PI+GAP_HALF_ANGLE; // just past the hub's north edge, fr
 for(let i=0;i<LOOP_LEN;i++){
   const a0=rightStart+i*STEP, a1=rightStart+(i+1)*STEP;
   const mid = midPoint(Rx,Ry,(LOOP_R_IN+LOOP_R_OUT)/2,(a0+a1)/2);
-  MASTER.push({idx:20+i, x:mid.x, y:mid.y, zone:'right', shade:i%2===0?'dark':'light', path:wedgePath(Rx,Ry,LOOP_R_IN,LOOP_R_OUT,a0,a1)});
+  MASTER.push({idx:20+i, x:mid.x, y:mid.y, zone:'right', shade:i%2===0?'dark':'light', path:loopWedgePath(Rx,Ry,LOOP_R_IN,LOOP_R_OUT,i,a0,a1,rightStart)});
 }
 const INFINITE_PT = {x:Hx, y:Hy};
 
@@ -769,9 +837,13 @@ function playDiceSound(){ playClip('dice', 1.2); }
 // ---------- state ----------
 function freshPieces(){
   const obj={};
-  const raceOrder = PIECE_DEFS.filter(d=>d.category==='race');
+  const raceOrder = PIECE_DEFS.filter(d=>d.category==='race' && !d.isExtra);
   PIECE_DEFS.forEach(d=>{
-    if(d.category==='race'){
+    if(d.isExtra){
+      // Homecoming's second copy: unavailable until its base piece completes
+      // a full circuit (see triggerHomecoming).
+      obj[d.id] = {status:'locked', progress:0, completedCircuit:false};
+    } else if(d.category==='race'){
       // Race pieces start already on the board, one step past their own
       // Placement space (so Placement itself starts empty, not sitting under
       // a Race piece) - no placement needed for these.
@@ -799,6 +871,7 @@ function resetState(){
     winReason:'',
     isDraw:false,
     log:[],
+    homecomingGranted:{white:{creature:false,dwarf:false,man:false,elf:false}, black:{creature:false,dwarf:false,man:false,elf:false}},
     pieces:{ white:freshPieces(), black:freshPieces() }
   };
 }
@@ -872,14 +945,33 @@ function diceBaseOptions(){
   return [d1+d2]; // only the sum of both dice is usable as a move length
 }
 
+// Will/Mind: bonuses aren't automatic. Until a color's Will is placed and
+// alive on the board, ALL of that color's pieces move by dice sum only (no
+// bonus). Once Will is placed and alive, bonuses apply automatically - UNLESS
+// Mind is also placed and alive, in which case the player chooses 0..bonus
+// per move instead. Both are tied to "alive right now" (status==='onboard')
+// - captures are permanent in this game (no revival), so losing Will after
+// it's been placed shuts bonuses off for the rest of the game.
+function willIsActive(color){ return state.pieces[color].will.status==='onboard'; }
+function mindIsActive(color){ return state.pieces[color].mind.status==='onboard'; }
+function effectiveBonus(color, def){
+  if(!willIsActive(color)) return 0;
+  return def.bonus;
+}
+
 function getLegalMoves(color, pieceId){
   if(state.winner) return [];
   const def = getDef(pieceId);
   const p = state.pieces[color][pieceId];
   if(p.status!=='onboard' || !state.dice) return [];
   const bases = diceBaseOptions();
+  const bonus = effectiveBonus(color, def);
   const deltaMagnitudes = new Set();
-  bases.forEach(b=>{ deltaMagnitudes.add(b+def.bonus); }); // bonus is a flat add, always fully applied
+  if(mindIsActive(color)){
+    bases.forEach(b=>{ for(let bn=0; bn<=bonus; bn++){ deltaMagnitudes.add(b+bn); } }); // Mind: choose how much of the bonus to use
+  } else {
+    bases.forEach(b=>{ deltaMagnitudes.add(b+bonus); }); // bonus is a flat add, always fully applied
+  }
   const deltas = new Set();
   deltaMagnitudes.forEach(v=>{
     deltas.add(v);
@@ -900,7 +992,9 @@ function getLegalMoves(color, pieceId){
         const masterIdx = pathToMaster(color, wrapped);
         const occ = occupantsAtMaster(masterIdx);
         if(soulCaptureBlocked(occ)) return;
-        legal.push({delta, newProgress: wrapped, kind:'normal', masterIdx, occ});
+        // completesLap: this move crosses/lands on the end of a full circuit -
+        // used by Homecoming to grant a Race piece's second copy.
+        legal.push({delta, newProgress: wrapped, kind:'normal', masterIdx, occ, completesLap:true});
         return;
       }
       const masterIdx = pathToMaster(color, newProgress);
@@ -1005,6 +1099,19 @@ function placePiece(color, pieceId){
   finishAction(color);
 }
 
+// Homecoming: the first time a Race piece of a given type completes a full
+// circuit, its owner's second copy of that type moves from 'locked' to
+// 'bench', ready to be placed like any other bench piece. Capped at one
+// extra per type, permanently - if the extra is later captured, looping
+// again with the survivor grants nothing further.
+function triggerHomecoming(color, baseId){
+  if(state.homecomingGranted[color][baseId]) return; // cap already reached
+  state.homecomingGranted[color][baseId] = true;
+  const extraId = baseId+'2';
+  state.pieces[color][extraId].status = 'bench';
+  log(`${color==='white'?'White':'Black'}'s ${getDef(baseId).label} completes a full circuit - a second ${getDef(baseId).label} joins the bench.`);
+}
+
 function performMove(color, pieceId, move){
   const p = state.pieces[color][pieceId];
   const def = getDef(pieceId);
@@ -1024,6 +1131,9 @@ function performMove(color, pieceId, move){
     p.progress = move.newProgress;
     if(pieceId==='soul' && move.newProgress>=TRACK_LEN){
       p.completedCircuit = true; // permanent, one-time - never unset once achieved
+    }
+    if(move.completesLap && def.category==='race'){
+      triggerHomecoming(color, def.baseId || def.id);
     }
     const oppColor = color==='white'?'black':'white';
     move.occ.forEach(o=>{
@@ -1087,7 +1197,8 @@ function finishAction(color){
 // that style - how far ahead it searches). Any style can be paired with any
 // difficulty. Character identities/lore for the personas can be layered on
 // later - these are functional placeholders.
-const PIECE_VALUE = { soul: 100000, body: 80, mind: 20, will: 25, elf: 30, man: 22, dwarf: 16, creature: 10 };
+const PIECE_VALUE = { soul: 100000, body: 80, mind: 20, will: 25, elf: 30, man: 22, dwarf: 16, creature: 10,
+  elf2: 30, man2: 22, dwarf2: 16, creature2: 10 }; // Homecoming's extra copies are worth the same as their base
 
 // raceWeight/personWeight: how much to prefer advancing/placing pieces of that
 // category over the other. bodyHunt: extra multiplier specifically on
@@ -1148,15 +1259,18 @@ function scoreOption(color, opt){
   const profile = SCORE_PROFILES[BOT_PROFILE[color]] || SCORE_PROFILES.balanced;
 
   if(opt.type==='place'){
-    // placement is always a Person piece under the current rules (Race pieces
-    // start onboard already), so personWeight is the relevant lever here.
+    // Placement used to always be a Person piece (Race pieces start onboard
+    // already) - now a Homecoming extra can be on the bench too, so use that
+    // piece's own category, not an assumption.
+    const placedDef = getDef(opt.pieceId);
+    const placeCategoryWeight = placedDef.category==='race' ? profile.raceWeight : profile.personWeight;
     const startMaster = START_MASTER[color];
     const occ = occupantsAtMaster(startMaster).filter(o=>o.color===color);
     const hitsOwnSoul = occ.some(o=>o.pieceId==='soul');
     const hitsOwnOther = occ.some(o=>o.pieceId!=='soul');
     if(hitsOwnSoul) score -= 100000; // never place on top of your own unmoved Soul
     else if(hitsOwnOther) score -= 15; // wastes a piece, mildly bad
-    else score += 6 * profile.personWeight; // otherwise, getting pieces onto the board is good
+    else score += 6 * placeCategoryWeight; // otherwise, getting pieces onto the board is good
     return score;
   }
 
