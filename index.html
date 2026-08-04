@@ -571,16 +571,21 @@ function getDef(id){ return PIECE_DEFS.find(p=>p.id===id); }
 // normal shape and the hub simply shows through in the small gap that would
 // otherwise appear at the seam.
 const Hx=420, Hy=300;
-// Loop and hub thickness (outer radius minus inner radius) bumped ~25%
+// Loop and hub thickness (outer radius minus inner radius) bumped ~45%
 // wider per playtester feedback that the spaces felt small - grown evenly
 // outward and inward around the same centerline (171.5 for the loops, 62.5
 // for the hub) so labels/pieces, which sit at that centerline, don't shift,
 // and so the extra width comes from both directions instead of needing a
-// much bigger swing from only one side.
-const HUB_R_OUT=91; // the hub sits on top now (no clipping)
-const HUB_R_IN=34;
+// much bigger swing from only one side. This is close to the practical
+// ceiling within the current 840x600 canvas - much past this and the loops
+// start crowding the canvas edges on the smallest landscape phones. Going
+// further would mean widening the canvas itself, which reopens the
+// desktop/mobile width tradeoffs from the earlier "make the board bigger"
+// conversation.
+const HUB_R_OUT=94; // the hub sits on top now (no clipping)
+const HUB_R_IN=31;
 const INF_R=45;
-const LOOP_R_OUT=201, LOOP_R_IN=142;
+const LOOP_R_OUT=204, LOOP_R_IN=139;
 const LOOP_GAP=14; // the two loops are placed almost touching - only this much space between their nearest edges
 const Lx=Hx-LOOP_R_OUT-LOOP_GAP/2, Ly=Hy;
 const Rx=Hx+LOOP_R_OUT+LOOP_GAP/2, Ry=Hy;
