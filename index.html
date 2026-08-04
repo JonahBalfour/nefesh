@@ -335,6 +335,15 @@
     #turn-status{ font-size:10px !important; }
     .piece-btn{ width:42px; padding:4px 2px; font-size:9px; }
     .piece-btn .abbr{ font-size:13px; }
+
+    /* Overlays (New Game, How to Play, Menu) center their box with no
+       scroll of their own - fine on desktop, but on a short landscape
+       phone a tall box gets clipped equally off the top and bottom with
+       no way to reach the rest, including the Start Game button. Let the
+       overlay itself scroll and top-align instead of centering, and trim
+       the box's padding so more of it is visible without scrolling at all. */
+    .overlay{ align-items:flex-start; overflow-y:auto; padding:var(--sp-3) 0; -webkit-overflow-scrolling:touch; }
+    .overlay-box{ margin:0 auto; max-height:none; padding:var(--sp-4) var(--sp-5) !important; }
   }
   .rotate-icon{
     width:64px; height:64px; border:3px solid var(--gold-bright); border-radius:8px;
