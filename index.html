@@ -279,42 +279,86 @@
   #menu-tab-notes li{ margin-bottom:var(--sp-2); }
   .menu-tab-heading{font-family:'Spectral SC',serif; letter-spacing:1px; color:var(--gold-text); font-size:var(--fs-base); margin:0 0 var(--sp-2);}
 
+  /* Phones only play this game in landscape - portrait is blocked entirely
+     by #rotate-prompt below, so this block just needs to size the prompt
+     itself and hide the game underneath it. Scoped to phone widths (not
+     tablets) via max-width so an iPad in portrait keeps the normal desktop
+     layout, which already fits it fine. */
+  #rotate-prompt{ display:none; }
+  @media (max-width: 600px) and (orientation: portrait){
+    body > *:not(#rotate-prompt){ display:none !important; }
+    #rotate-prompt{
+      display:flex; position:fixed; inset:0; z-index:100;
+      flex-direction:column; align-items:center; justify-content:center;
+      gap:var(--sp-5); padding:var(--sp-6); text-align:center;
+      background:linear-gradient(160deg, var(--wood-dark), var(--wood) 60%, var(--wood-dark));
+    }
+  }
   @media (max-width: 700px){
     body{ padding:var(--sp-3); }
-    h1.title{ font-size:28px; letter-spacing:2px; }
-    .subtitle{ font-size:var(--fs-xs); margin-bottom:var(--sp-4); }
-    /* Not enough width here to pin the buttons in the corner without them
-       overlapping the title - fall back to the original in-flow row. */
-    .top-actions{ position:static; display:flex; gap:var(--sp-3); justify-content:center; margin-bottom:var(--sp-5); }
-    .app{ flex-direction:column; gap:var(--sp-4); }
-    .board-panel{ min-width:0; flex-basis:auto; width:100%; padding:var(--sp-2); }
-    .control-panel{ min-width:0; flex-basis:auto; width:100%; }
     .overlay-box{ max-width:calc(100vw - 32px); padding:var(--sp-6) var(--sp-5); }
   }
 
   /* A phone held sideways is wide enough for the desktop side-by-side shape,
-     but far too short for it - stacking (the portrait rule above) would leave
-     most of the board scrolled off-screen. So a landscape phone gets its own
-     shape instead: title/subtitle hidden to reclaim vertical space, and the
-     board + a narrow always-visible sidebar sit side by side, both capped to
-     the viewport's height so nothing needs a page scroll to reach the dice. */
+     but far too short for it - stacking would leave most of the board
+     scrolled off-screen. So a landscape phone gets its own shape instead:
+     title/subtitle hidden to reclaim vertical space, and the board + a
+     narrow always-visible sidebar sit side by side, both capped to the
+     viewport's height so nothing needs a page scroll to reach the dice, and
+     the board itself is given as much of that space as the sidebar can
+     spare so it reads as the main event rather than a cramped afterthought. */
   @media (max-height: 500px) and (orientation: landscape){
-    body{ padding:6px; }
+    body{ padding:4px; }
     h1.title, .subtitle{ display:none; }
     /* No title above to give the fixed corner buttons clear air here - they'd
        sit on top of the control panel's own content instead. Back to an
        in-flow row above the board, like before the corner treatment. */
-    .top-actions{ position:static; display:flex; gap:var(--sp-2); justify-content:center; margin-bottom:6px; }
-    .app{ flex-direction:row; flex-wrap:nowrap; gap:var(--sp-2); align-items:stretch; max-width:none; }
-    .board-panel{ min-width:0; flex:1 1 auto; width:auto; padding:6px; display:flex; align-items:center; justify-content:center; max-height:calc(100vh - 50px); }
-    #board-svg{ width:auto !important; height:100% !important; max-width:100%; max-height:calc(100vh - 62px); }
-    .control-panel{ min-width:150px; max-width:190px; flex:0 0 180px; gap:var(--sp-2); overflow-y:auto; max-height:calc(100vh - 50px); }
-    .panel-box{ padding:var(--sp-2) var(--sp-3); }
-    .panel-title{ margin-bottom:6px; padding-bottom:4px; }
+    .top-actions{ position:static; display:flex; gap:6px; justify-content:center; margin-bottom:4px; }
+    .top-actions button{ min-height:30px; padding:5px 10px; font-size:11px; }
+    .app{ flex-direction:row; flex-wrap:nowrap; gap:6px; align-items:stretch; max-width:none; }
+    .board-panel{ min-width:0; flex:1 1 auto; width:auto; padding:4px; display:flex; align-items:center; justify-content:center; max-height:calc(100vh - 42px); }
+    #board-svg{ width:auto !important; height:100% !important; max-width:100%; max-height:calc(100vh - 50px); }
+    .control-panel{ min-width:130px; max-width:165px; flex:0 0 155px; gap:6px; overflow-y:auto; max-height:calc(100vh - 42px); }
+    .panel-box{ padding:6px var(--sp-2); }
+    .panel-title{ margin-bottom:4px; padding-bottom:3px; font-size:11px; }
+    /* At this width "Round 1" and a "Now acting" pill side by side wrap into
+       an unreadable stack of single words - give each its own line instead. */
+    .control-panel .row{ flex-direction:column; align-items:flex-start; gap:4px; }
+    .dice-row{ margin:4px 0; gap:6px; flex-wrap:wrap; }
+    .die{ width:30px; height:30px; padding:4px; }
+    #roll-btn{ min-height:30px; padding:5px 8px; font-size:11px; }
+    .move-options{ gap:4px; margin-top:4px; }
+    .move-chip{ padding:2px 6px; font-size:10px; }
+    #match-summary, #body-status{ font-size:11px !important; margin-bottom:6px !important; }
+    #flip-board-row span{ display:none; } /* hint text - the icon-free button alone is enough once space is this tight */
+    #pass-btn{ font-size:10px; padding:5px 8px; min-height:0; }
+    #turn-status{ font-size:10px !important; }
+    .piece-btn{ width:42px; padding:4px 2px; font-size:9px; }
+    .piece-btn .abbr{ font-size:13px; }
   }
+  .rotate-icon{
+    width:64px; height:64px; border:3px solid var(--gold-bright); border-radius:8px;
+    position:relative; animation:rotate-hint 1.8s ease-in-out infinite;
+  }
+  .rotate-icon::after{
+    content:''; position:absolute; bottom:-14px; left:50%; transform:translateX(-50%);
+    width:8px; height:8px; border-radius:50%; background:var(--gold-bright);
+  }
+  @keyframes rotate-hint{
+    0%, 15%{ transform:rotate(0deg); } 50%, 65%{ transform:rotate(90deg); } 100%{ transform:rotate(90deg); }
+  }
+  @media (prefers-reduced-motion: reduce){ .rotate-icon{ animation:none; transform:rotate(90deg); } }
 </style>
 </head>
 <body>
+
+<div id="rotate-prompt">
+  <div class="rotate-icon"></div>
+  <div>
+    <h1 class="title" style="font-size:28px; margin-bottom:var(--sp-2);">NEFESH</h1>
+    <p style="margin:0; color:var(--parchment); font-size:var(--fs-base);">Rotate your device — Nefesh plays best in landscape.</p>
+  </div>
+</div>
 
 <h1 class="title">NEFESH</h1>
 <p class="subtitle">a prototype board for playtesting — click to place, move, and capture</p>
