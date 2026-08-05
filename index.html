@@ -98,7 +98,9 @@
        it reads as long horizontal grain lines, the way real wood does. */
     background-image:
       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.35' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.16 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-      linear-gradient(180deg,var(--wood-light),var(--wood));
+      /* Lighter than the shared --wood/--wood-light tokens (which stay as
+         they are for the rest of the UI) - just for this panel's surface. */
+      linear-gradient(180deg,#6b5138,#523d29);
     border:1px solid #5c422c;
     border-radius:var(--radius-lg);
     padding:var(--sp-4);
@@ -631,7 +633,15 @@ function buildBoardDefs(){
     return f;
   };
   defs.appendChild(shadow('pieceShadow', 2.5, 2.2, 0.45));
-  defs.appendChild(shadow('hubShadow', 3, 3.5, 0.4));
+  // feDropShadow on the hub's own 4 pie-wedge paths (arcs, not simple
+  // shapes) rendered with visible dark triangular artifacts bleeding past
+  // the hub's true circular edge - filtering complex path geometry directly
+  // isn't reliable. Instead, blur a single plain circle drawn behind the
+  // hub - circles are simple enough to filter cleanly (this is the same
+  // approach the piece shadows above already use successfully).
+  const hubBlur = el('filter',{id:'hubBlur', x:'-60%', y:'-60%', width:'220%', height:'220%'});
+  hubBlur.appendChild(el('feGaussianBlur',{stdDeviation:3.5}));
+  defs.appendChild(hubBlur);
   const radial = (id,cx,cy,r,stops)=>{
     const g = el('radialGradient',{id,cx,cy,r});
     stops.forEach(([offset,color,opacity])=>{
@@ -1934,12 +1944,7 @@ function renderBoard(){
   // on top, with no clipping - so it completely covers whatever loop material
   // sits underneath it at the seam, instead of the hub being the one cut back.
   const renderOrder = [...MASTER.filter(s=>s.zone!=='hub'), ...MASTER.filter(s=>s.zone==='hub')];
-  // The hub's shadow needs to wrap all 4 quadrants as ONE shape, not each
-  // quadrant separately - filtering each quadrant on its own gave every
-  // internal seam its own overlapping shadow, which showed up as faint
-  // ghost edges bleeding across the hub. hubGroup collects the quadrants
-  // and gets the single shared filter, appended once after the loop below.
-  const hubGroup = el('g',{filter:'url(#hubShadow)'});
+  const hubGroup = el('g',{});
   renderOrder.forEach(sp=>{
     const vis = visualMaster(sp.idx); // where this space actually draws - itself, unless the board is turned to face Black
     const isHub = sp.zone==='hub';
@@ -1986,6 +1991,10 @@ function renderBoard(){
     if(isHub) hubGroup.appendChild(g);
     else svg.appendChild(g);
   });
+  // A plain blurred circle standing in for the hub's shadow, drawn just
+  // behind it - simpler and more reliable than filtering the hub's own
+  // pie-wedge paths directly (see buildBoardDefs for why).
+  svg.appendChild(el('circle',{cx:Hx, cy:Hy+3, r:HUB_R_OUT, fill:'#000000', opacity:0.35, filter:'url(#hubBlur)', 'pointer-events':'none'}));
   svg.appendChild(hubGroup);
 
   // A soft rim-lit sheen over each loop and the hub, on top of the flat
