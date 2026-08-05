@@ -596,8 +596,16 @@ const Hx=420, Hy=300;
 // further would mean widening the canvas itself, which reopens the
 // desktop/mobile width tradeoffs from the earlier "make the board bigger"
 // conversation.
-const HUB_R_OUT=94; // the hub sits on top now (no clipping)
-const HUB_R_IN=31;
+// The hub needs to reach past the INNER corner of each loop's flank spaces
+// where they meet the gap (the outer corner was already comfortably
+// covered) - the loop thickness increases above never rechecked this, so
+// growing LOOP_R_IN gradually opened a real ~5-unit gap there, showing the
+// wood background through the seam. Re-verified by calculation, not
+// guessed: that inner corner sits ~99.2 units from the hub center at the
+// current loop radii, so 106 clears it with a safety margin. Thickness
+// (63) kept the same as before, just shifted outward.
+const HUB_R_OUT=106; // the hub sits on top now (no clipping)
+const HUB_R_IN=43;
 const INF_R=45;
 const LOOP_R_OUT=204, LOOP_R_IN=139;
 const LOOP_GAP=14; // the two loops are placed almost touching - only this much space between their nearest edges
