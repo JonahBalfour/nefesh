@@ -4,7 +4,7 @@
 // every load just to render text. Bump CACHE_NAME whenever index.html
 // changes meaningfully so old clients pick up the new version instead of
 // being stuck on a stale cached copy.
-const CACHE_NAME = 'nefesh-cache-v6';
+const CACHE_NAME = 'nefesh-cache-v7';
 const PRECACHE_URLS = [
   './index.html',
   './manifest.json',

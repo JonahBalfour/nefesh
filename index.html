@@ -596,16 +596,15 @@ const Hx=420, Hy=300;
 // further would mean widening the canvas itself, which reopens the
 // desktop/mobile width tradeoffs from the earlier "make the board bigger"
 // conversation.
-// The hub needs to reach past the INNER corner of each loop's flank spaces
-// where they meet the gap (the outer corner was already comfortably
-// covered) - the loop thickness increases above never rechecked this, so
-// growing LOOP_R_IN gradually opened a real ~5-unit gap there, showing the
-// wood background through the seam. Re-verified by calculation, not
-// guessed: that inner corner sits ~99.2 units from the hub center at the
-// current loop radii, so 106 clears it with a safety margin. Thickness
-// (63) kept the same as before, just shifted outward.
-const HUB_R_OUT=106; // the hub sits on top now (no clipping)
-const HUB_R_IN=43;
+// The loop thickness increases above opened a real ~5-unit gap at the
+// INNER corner of each loop's flank spaces where they meet the gap (the
+// outer corner was already comfortably covered) - growing the whole hub's
+// radius to close it was the wrong fix: it also ate into A1/A16/B1/B16
+// (the spaces right next to the gap), making them visibly smaller and
+// letting their pieces overlap the hub. Kept the hub at its original size
+// and patch just those 4 corners instead - see hubSeamPatches below.
+const HUB_R_OUT=94; // the hub sits on top now (no clipping)
+const HUB_R_IN=31;
 const INF_R=45;
 const LOOP_R_OUT=204, LOOP_R_IN=139;
 const LOOP_GAP=14; // the two loops are placed almost touching - only this much space between their nearest edges
@@ -626,6 +625,24 @@ function wedgePath(cx,cy,rIn,rOut,a0,a1){
 function annulusPath(cx,cy,rIn,rOut){
   return `M ${cx-rOut} ${cy} A ${rOut} ${rOut} 0 1 0 ${cx+rOut} ${cy} A ${rOut} ${rOut} 0 1 0 ${cx-rOut} ${cy} Z `+
          `M ${cx-rIn} ${cy} A ${rIn} ${rIn} 0 1 0 ${cx+rIn} ${cy} A ${rIn} ${rIn} 0 1 0 ${cx-rIn} ${cy} Z`;
+}
+// The hub's plain circle covers everywhere except 4 tiny slivers, at the
+// inner corner of the one space on each loop that sits right at the gap
+// (A1, A16, B1, B16) - the loop-thickness increases never rechecked the
+// hub's reach there. Patching just those 4 spots, in whichever hub
+// quadrant's color is actually adjacent, closes the seam without growing
+// the hub itself (which would shrink those 4 spaces and let their pieces
+// overlap it - tried that first, wrong fix).
+function hubSeamPatches(){
+  const pt=(cx,cy,a)=>({x:cx+LOOP_R_IN*Math.cos(a), y:cy+LOOP_R_IN*Math.sin(a)});
+  const leftGapEnd = leftStart + LOOP_LEN*STEP;
+  const rightGapEnd = rightStart + LOOP_LEN*STEP;
+  return [
+    {...pt(Lx,Ly,leftStart),   color:'#181410'}, // left loop / A16 side -> hub C4 (dark)
+    {...pt(Lx,Ly,leftGapEnd),  color:'#e9dcc0'}, // left loop / A1 side  -> hub C1 (light)
+    {...pt(Rx,Ry,rightStart),  color:'#e9dcc0'}, // right loop / B16 side -> hub C2 (light)
+    {...pt(Rx,Ry,rightGapEnd), color:'#181410'}, // right loop / B1 side  -> hub C3 (dark)
+  ];
 }
 // One-time visual defs (gradients + drop-shadow filters) for the fake-3D
 // pass: glossy radial-gradient piece tokens with a soft drop shadow so they
@@ -2003,6 +2020,9 @@ function renderBoard(){
   // behind it - simpler and more reliable than filtering the hub's own
   // pie-wedge paths directly (see buildBoardDefs for why).
   svg.appendChild(el('circle',{cx:Hx, cy:Hy+3, r:HUB_R_OUT, fill:'#000000', opacity:0.35, filter:'url(#hubBlur)', 'pointer-events':'none'}));
+  hubSeamPatches().forEach(p=>{
+    svg.appendChild(el('circle',{cx:p.x, cy:p.y, r:10, fill:p.color, 'pointer-events':'none'}));
+  });
   svg.appendChild(hubGroup);
 
   // A soft rim-lit sheen over each loop and the hub, on top of the flat
