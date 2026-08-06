@@ -633,15 +633,30 @@ function annulusPath(cx,cy,rIn,rOut){
 // quadrant's color is actually adjacent, closes the seam without growing
 // the hub itself (which would shrink those 4 spaces and let their pieces
 // overlap it - tried that first, wrong fix).
+// A plain circle patch (the first attempt) was the wrong shape - the real
+// gap is a thin wedge-shaped sliver (bounded by the loop's own straight
+// edge at the gap on one side, the hub's circular edge on the other), and
+// a symmetric circle centered on the worst point neither follows that
+// sliver nor stays inside it, so it both bulged out past the true edges
+// and still left part of the sliver uncovered. A triangle - outer-gap
+// point, inner-gap point, hub center - fixes both: two of its sides
+// exactly match the wedge's own existing edge (so it fuses with zero
+// visible seam there) and the third tucks safely inside the hub, where
+// the hub's own crisp circle (drawn after) covers any imprecision.
 function hubSeamPatches(){
-  const pt=(cx,cy,a)=>({x:cx+LOOP_R_IN*Math.cos(a), y:cy+LOOP_R_IN*Math.sin(a)});
+  const outer=(cx,cy,a)=>({x:cx+LOOP_R_OUT*Math.cos(a), y:cy+LOOP_R_OUT*Math.sin(a)});
+  const inner=(cx,cy,a)=>({x:cx+LOOP_R_IN*Math.cos(a), y:cy+LOOP_R_IN*Math.sin(a)});
+  const tri=(cx,cy,a)=>{
+    const o=outer(cx,cy,a), i=inner(cx,cy,a);
+    return `M ${o.x} ${o.y} L ${i.x} ${i.y} L ${Hx} ${Hy} Z`;
+  };
   const leftGapEnd = leftStart + LOOP_LEN*STEP;
   const rightGapEnd = rightStart + LOOP_LEN*STEP;
   return [
-    {...pt(Lx,Ly,leftStart),   color:'#181410'}, // left loop / A16 side -> hub C4 (dark)
-    {...pt(Lx,Ly,leftGapEnd),  color:'#e9dcc0'}, // left loop / A1 side  -> hub C1 (light)
-    {...pt(Rx,Ry,rightStart),  color:'#e9dcc0'}, // right loop / B16 side -> hub C2 (light)
-    {...pt(Rx,Ry,rightGapEnd), color:'#181410'}, // right loop / B1 side  -> hub C3 (dark)
+    {d:tri(Lx,Ly,leftStart),   color:'#181410'}, // left loop / A16 side -> hub C4 (dark)
+    {d:tri(Lx,Ly,leftGapEnd),  color:'#e9dcc0'}, // left loop / A1 side  -> hub C1 (light)
+    {d:tri(Rx,Ry,rightStart),  color:'#e9dcc0'}, // right loop / B16 side -> hub C2 (light)
+    {d:tri(Rx,Ry,rightGapEnd), color:'#181410'}, // right loop / B1 side  -> hub C3 (dark)
   ];
 }
 // One-time visual defs (gradients + drop-shadow filters) for the fake-3D
@@ -2021,7 +2036,7 @@ function renderBoard(){
   // pie-wedge paths directly (see buildBoardDefs for why).
   svg.appendChild(el('circle',{cx:Hx, cy:Hy+3, r:HUB_R_OUT, fill:'#000000', opacity:0.35, filter:'url(#hubBlur)', 'pointer-events':'none'}));
   hubSeamPatches().forEach(p=>{
-    svg.appendChild(el('circle',{cx:p.x, cy:p.y, r:10, fill:p.color, 'pointer-events':'none'}));
+    svg.appendChild(el('path',{d:p.d, fill:p.color, 'pointer-events':'none'}));
   });
   svg.appendChild(hubGroup);
 
