@@ -602,8 +602,7 @@ const Hx=420, Hy=300;
 // radius to close it was the wrong fix: it also ate into A1/A16/B1/B16
 // (the spaces right next to the gap), making them visibly smaller and
 // letting their pieces overlap the hub. Kept the hub at its original size
-// and instead flare each hub quadrant's own path out to cover just those
-// 4 corners - see hubWedgeWithFlare below.
+// and patch just those 4 corners instead - see hubSeamPatches below.
 const HUB_R_OUT=94; // the hub sits on top now (no clipping)
 const HUB_R_IN=31;
 const INF_R=45;
@@ -634,53 +633,31 @@ function annulusPath(cx,cy,rIn,rOut){
 // quadrant's color is actually adjacent, closes the seam without growing
 // the hub itself (which would shrink those 4 spaces and let their pieces
 // overlap it - tried that first, wrong fix).
-// Two earlier attempts at closing this seam (a circle patch, then a
-// triangle patch) both drew a SEPARATE shape underneath the hub, relying
-// on the hub's own opaque redraw on top to hide most of it. That's fragile
-// by construction: it depends on two independently-rendered shapes lining
-// up to the sub-pixel, and Safari's antialiasing doesn't agree with
-// Chromium's there, leaving a faint seam visible on Mac Safari specifically
-// (confirmed - invisible in this project's own dev browser, but real and
-// reproducible in Safari). Fixed properly this time by not drawing a
-// separate shape at all: each hub quadrant's OWN path is extended to
-// physically include the needed corner, so the covered area is one single
-// continuous fill with its own uniform antialiasing - nothing to seam
-// against, in any renderer.
-function hubWedgeWithFlare(cx,cy,rIn,rOut,a0,a1,flarePt){
-  const half = 4*Math.PI/180;
-  // atan2 returns angles in (-pi, pi], but a0/a1 for these quadrants are
-  // always given as positive values up to 2*pi - normalize into that same
-  // range so aBefore/aAfter land inside [a0,a1] instead of, for two of the
-  // four quadrants, miles outside it (which produced huge, wildly wrong
-  // wedge shapes - a real bug this introduced, caught by testing before
-  // shipping, unrelated to the original seam-artifact issue).
-  let flareAngle = Math.atan2(flarePt.y-cy, flarePt.x-cx);
-  if(flareAngle < 0) flareAngle += 2*Math.PI;
-  const aBefore = flareAngle-half, aAfter = flareAngle+half;
-  const p = (r,a)=>({x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)});
-  const o0=p(rOut,a0), oBefore=p(rOut,aBefore), oAfter=p(rOut,aAfter), o1=p(rOut,a1);
-  const i0=p(rIn,a0), i1=p(rIn,a1);
-  const large1 = (aBefore-a0) > Math.PI ? 1 : 0;
-  const large2 = (a1-aAfter) > Math.PI ? 1 : 0;
-  const largeIn = (a1-a0) > Math.PI ? 1 : 0;
-  return `M ${o0.x} ${o0.y} A ${rOut} ${rOut} 0 ${large1} 1 ${oBefore.x} ${oBefore.y} `+
-         `L ${flarePt.x} ${flarePt.y} L ${oAfter.x} ${oAfter.y} `+
-         `A ${rOut} ${rOut} 0 ${large2} 1 ${o1.x} ${o1.y} `+
-         `L ${i1.x} ${i1.y} A ${rIn} ${rIn} 0 ${largeIn} 0 ${i0.x} ${i0.y} Z`;
-}
-// The 4 corner points each hub quadrant needs to flare out to reach -
-// same points as before, just consumed differently now (baked into the
-// quadrant's own path instead of patched separately).
-function hubFlarePoints(){
+// A plain circle patch (the first attempt) was the wrong shape - the real
+// gap is a thin wedge-shaped sliver (bounded by the loop's own straight
+// edge at the gap on one side, the hub's circular edge on the other), and
+// a symmetric circle centered on the worst point neither follows that
+// sliver nor stays inside it, so it both bulged out past the true edges
+// and still left part of the sliver uncovered. A triangle - outer-gap
+// point, inner-gap point, hub center - fixes both: two of its sides
+// exactly match the wedge's own existing edge (so it fuses with zero
+// visible seam there) and the third tucks safely inside the hub, where
+// the hub's own crisp circle (drawn after) covers any imprecision.
+function hubSeamPatches(){
+  const outer=(cx,cy,a)=>({x:cx+LOOP_R_OUT*Math.cos(a), y:cy+LOOP_R_OUT*Math.sin(a)});
   const inner=(cx,cy,a)=>({x:cx+LOOP_R_IN*Math.cos(a), y:cy+LOOP_R_IN*Math.sin(a)});
+  const tri=(cx,cy,a)=>{
+    const o=outer(cx,cy,a), i=inner(cx,cy,a);
+    return `M ${o.x} ${o.y} L ${i.x} ${i.y} L ${Hx} ${Hy} Z`;
+  };
   const leftGapEnd = leftStart + LOOP_LEN*STEP;
   const rightGapEnd = rightStart + LOOP_LEN*STEP;
-  return {
-    16: inner(Lx,Ly,leftGapEnd),  // C1 <- A1 side
-    17: inner(Rx,Ry,rightStart),  // C2 <- B16 side
-    18: inner(Rx,Ry,rightGapEnd), // C3 <- B1 side
-    19: inner(Lx,Ly,leftStart),   // C4 <- A16 side
-  };
+  return [
+    {d:tri(Lx,Ly,leftStart),   color:'#181410'}, // left loop / A16 side -> hub C4 (dark)
+    {d:tri(Lx,Ly,leftGapEnd),  color:'#e9dcc0'}, // left loop / A1 side  -> hub C1 (light)
+    {d:tri(Rx,Ry,rightStart),  color:'#e9dcc0'}, // right loop / B16 side -> hub C2 (light)
+    {d:tri(Rx,Ry,rightGapEnd), color:'#181410'}, // right loop / B1 side  -> hub C3 (dark)
+  ];
 }
 // One-time visual defs (gradients + drop-shadow filters) for the fake-3D
 // pass: glossy radial-gradient piece tokens with a soft drop shadow so they
@@ -866,6 +843,17 @@ for(let i=0;i<LOOP_LEN;i++){
   const mid = midPoint(Lx,Ly,(LOOP_R_IN+LOOP_R_OUT)/2,(a0+a1)/2);
   MASTER.push({idx:i, x:mid.x, y:mid.y, zone:'left', shade:i%2===0?'light':'dark', path:leftPaths[i]});
 }
+const hubQuadrants = [
+  {idx:16, a0:Math.PI, a1:Math.PI*1.5, half:'light', isStart:'black'},   // NW
+  {idx:17, a0:Math.PI*1.5, a1:Math.PI*2, half:'light', isStart:null},    // NE
+  {idx:18, a0:0, a1:Math.PI*0.5, half:'dark', isStart:'white'},          // SE
+  {idx:19, a0:Math.PI*0.5, a1:Math.PI, half:'dark', isStart:null},       // SW
+];
+hubQuadrants.forEach(q=>{
+  const mid = midPoint(Hx,Hy,(HUB_R_IN+HUB_R_OUT)/2,(q.a0+q.a1)/2);
+  MASTER.push({idx:q.idx, x:mid.x, y:mid.y, zone:'hub', half:q.half, isStart:q.isStart,
+    path: wedgePath(Hx,Hy,HUB_R_IN,HUB_R_OUT,q.a0,q.a1)});
+});
 const rightStart = Math.PI+GAP_HALF_ANGLE; // just past the hub's north edge, from the right loop's own center
 const rightPaths = buildLoopWedgePaths(Rx,Ry,LOOP_R_IN,LOOP_R_OUT,rightStart);
 for(let i=0;i<LOOP_LEN;i++){
@@ -873,18 +861,6 @@ for(let i=0;i<LOOP_LEN;i++){
   const mid = midPoint(Rx,Ry,(LOOP_R_IN+LOOP_R_OUT)/2,(a0+a1)/2);
   MASTER.push({idx:20+i, x:mid.x, y:mid.y, zone:'right', shade:i%2===0?'dark':'light', path:rightPaths[i]});
 }
-const hubQuadrants = [
-  {idx:16, a0:Math.PI, a1:Math.PI*1.5, half:'light', isStart:'black'},   // NW
-  {idx:17, a0:Math.PI*1.5, a1:Math.PI*2, half:'light', isStart:null},    // NE
-  {idx:18, a0:0, a1:Math.PI*0.5, half:'dark', isStart:'white'},          // SE
-  {idx:19, a0:Math.PI*0.5, a1:Math.PI, half:'dark', isStart:null},       // SW
-];
-const hubFlares = hubFlarePoints();
-hubQuadrants.forEach(q=>{
-  const mid = midPoint(Hx,Hy,(HUB_R_IN+HUB_R_OUT)/2,(q.a0+q.a1)/2);
-  MASTER.push({idx:q.idx, x:mid.x, y:mid.y, zone:'hub', half:q.half, isStart:q.isStart,
-    path: hubWedgeWithFlare(Hx,Hy,HUB_R_IN,HUB_R_OUT,q.a0,q.a1,hubFlares[q.idx])});
-});
 const INFINITE_PT = {x:Hx, y:Hy};
 
 // Board orientation: the whole figure-8 has exact 180-degree rotational
@@ -2059,6 +2035,9 @@ function renderBoard(){
   // behind it - simpler and more reliable than filtering the hub's own
   // pie-wedge paths directly (see buildBoardDefs for why).
   svg.appendChild(el('circle',{cx:Hx, cy:Hy+3, r:HUB_R_OUT, fill:'#000000', opacity:0.35, filter:'url(#hubBlur)', 'pointer-events':'none'}));
+  hubSeamPatches().forEach(p=>{
+    svg.appendChild(el('path',{d:p.d, fill:p.color, 'pointer-events':'none'}));
+  });
   svg.appendChild(hubGroup);
 
   // A soft rim-lit sheen over each loop and the hub, on top of the flat
