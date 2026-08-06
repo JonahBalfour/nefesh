@@ -741,6 +741,60 @@ function quadBezierPoint(P0,C,P2,t){
   const mt=1-t;
   return { x: mt*mt*P0.x + 2*mt*t*C.x + t*t*P2.x, y: mt*mt*P0.y + 2*mt*t*C.y + t*t*P2.y };
 }
+// The one space on each loop that actually touches the gap (A1, A16, B1,
+// B16) used to close with a straight line between two points sitting at
+// different distances from the hub's center - its outer corner well
+// inside the hub's own circle, its inner corner just outside it. Earlier
+// attempts patched that mismatch with a separate shape drawn underneath
+// the hub, which kept causing its own seam artifacts (worst on Safari).
+// This fixes it at the root instead: the space's own boundary is
+// extended/trimmed so both corners land EXACTLY on the hub's circle (same
+// center, same radius as the hub's own edge), so the two shapes share one
+// literal boundary rather than approximating each other.
+//
+// The bezier's own t=0/t=1 endpoints are anchored at the loop's true
+// circular gap angle, and quadratic beziers are just polynomials - valid,
+// well-defined, for any real t, not only [0,1] - so "trimming" here can
+// mean evaluating slightly past 0 or 1 depending on which direction the
+// gap corner needs to move. gapAtZero says which end of this curve (t=0
+// or t=1) is the free/gap end being adjusted; the other end is left
+// completely alone since it's shared with the neighboring space.
+function solveHubTrimT(P0,C,P2,gapAtZero){
+  const distAt = t => { const p=quadBezierPoint(P0,C,P2,t); return Math.hypot(Hx-p.x, Hy-p.y); };
+  const gapDist = gapAtZero ? distAt(0) : distAt(1);
+  let tlo, thi;
+  if(gapDist < HUB_R_OUT){
+    tlo = gapAtZero ? 0 : 0.4;
+    thi = gapAtZero ? 0.6 : 1;
+  } else {
+    tlo = gapAtZero ? -0.6 : 1;
+    thi = gapAtZero ? 0 : 1.6;
+  }
+  let flo = distAt(tlo)-HUB_R_OUT;
+  for(let i=0;i<60;i++){
+    const tmid=(tlo+thi)/2, fmid=distAt(tmid)-HUB_R_OUT;
+    if((fmid<0)===(flo<0)){ tlo=tmid; flo=fmid; } else { thi=tmid; }
+  }
+  return (tlo+thi)/2;
+}
+// Short polyline tracing the hub's own circle between two points already
+// known to sit exactly on it (endpoints excluded - the caller already has
+// those from elsewhere). Built as explicit sampled points rather than an
+// SVG arc command, same as the rest of this file's curves, since this
+// project has been burned by arc sweep/large-arc-flag mistakes before and
+// this is cheap insurance against another one.
+function hubArcPolyline(p0, p1){
+  const a0 = Math.atan2(p0.y-Hy, p0.x-Hx);
+  let a1 = Math.atan2(p1.y-Hy, p1.x-Hx);
+  while(a1-a0 > Math.PI) a1 -= 2*Math.PI;
+  while(a1-a0 < -Math.PI) a1 += 2*Math.PI;
+  const n = 8, pts=[];
+  for(let i=1;i<n;i++){
+    const t=i/n, a=a0+(a1-a0)*t;
+    pts.push({x:Hx+HUB_R_OUT*Math.cos(a), y:Hy+HUB_R_OUT*Math.sin(a)});
+  }
+  return pts;
+}
 // A quadratic bezier doesn't move at a constant rate along its length, so
 // cutting one into n equal-t pieces gives noticeably uneven widths (this is
 // what made the first version of the flank spaces look uneven/distorted).
@@ -779,10 +833,38 @@ function buildFlankWedgePaths(cx,cy,rIn,rOut,angleLo,angleHi,tangentAtLo,n){
   const paths=[];
   for(let i=0;i<n;i++){
     const sLo=splits[i], sHi=splits[i+1];
-    const [oP0,oC,oP2] = quadBezierSubsegment(outer.P0,outer.C,outer.P2,sLo,sHi);
-    const [iP0,iC,iP2] = quadBezierSubsegment(inner.P0,inner.C,inner.P2,sLo,sHi);
-    paths.push(`M ${oP0.x} ${oP0.y} Q ${oC.x} ${oC.y} ${oP2.x} ${oP2.y} `+
-               `L ${iP2.x} ${iP2.y} Q ${iC.x} ${iC.y} ${iP0.x} ${iP0.y} Z`);
+    // Only the ONE space that actually touches the gap gets the
+    // hub-trimmed treatment - every other space (including its own
+    // neighbor one step away) is built exactly as before, sharing the
+    // same unmodified split point with it, so nothing else shifts.
+    const isGapSpace = tangentAtLo ? (i===n-1) : (i===0);
+    if(isGapSpace){
+      const gapAtZero = !tangentAtLo;
+      const tOuter = solveHubTrimT(outer.P0,outer.C,outer.P2,gapAtZero);
+      const tInner = solveHubTrimT(inner.P0,inner.C,inner.P2,gapAtZero);
+      const oSLo = gapAtZero ? tOuter : sLo, oSHi = gapAtZero ? sHi : tOuter;
+      const iSLo = gapAtZero ? tInner : sLo, iSHi = gapAtZero ? sHi : tInner;
+      const [oP0,oC,oP2] = quadBezierSubsegment(outer.P0,outer.C,outer.P2,oSLo,oSHi);
+      const [iP0,iC,iP2] = quadBezierSubsegment(inner.P0,inner.C,inner.P2,iSLo,iSHi);
+      const outerGapPt = gapAtZero ? oP0 : oP2;
+      const innerGapPt = gapAtZero ? iP0 : iP2;
+      if(gapAtZero){
+        const arcPts = hubArcPolyline(innerGapPt, outerGapPt);
+        paths.push(`M ${outerGapPt.x} ${outerGapPt.y} Q ${oC.x} ${oC.y} ${oP2.x} ${oP2.y} `+
+                   `L ${iP2.x} ${iP2.y} Q ${iC.x} ${iC.y} ${innerGapPt.x} ${innerGapPt.y} `+
+                   arcPts.map(p=>`L ${p.x} ${p.y}`).join(' ') + ' Z');
+      } else {
+        const arcPts = hubArcPolyline(outerGapPt, innerGapPt);
+        paths.push(`M ${oP0.x} ${oP0.y} Q ${oC.x} ${oC.y} ${outerGapPt.x} ${outerGapPt.y} `+
+                   arcPts.map(p=>`L ${p.x} ${p.y}`).join(' ') +
+                   ` L ${innerGapPt.x} ${innerGapPt.y} Q ${iC.x} ${iC.y} ${iP0.x} ${iP0.y} Z`);
+      }
+    } else {
+      const [oP0,oC,oP2] = quadBezierSubsegment(outer.P0,outer.C,outer.P2,sLo,sHi);
+      const [iP0,iC,iP2] = quadBezierSubsegment(inner.P0,inner.C,inner.P2,sLo,sHi);
+      paths.push(`M ${oP0.x} ${oP0.y} Q ${oC.x} ${oC.y} ${oP2.x} ${oP2.y} `+
+                 `L ${iP2.x} ${iP2.y} Q ${iC.x} ${iC.y} ${iP0.x} ${iP0.y} Z`);
+    }
   }
   return paths;
 }
@@ -816,14 +898,35 @@ function loopSheenPath(cx,cy,rIn,rOut,loopStart){
   const innerStart = flankBezier(cx,cy,rIn, gapLo,angleMidLo,false);
   const innerEnd   = flankBezier(cx,cy,rIn, angleMidHi,gapHi,true);
   const oMid2 = ptAt(rOut,angleMidHi), iMid1 = ptAt(rIn,angleMidLo), iMid2 = ptAt(rIn,angleMidHi);
-  return `M ${outerStart.P0.x} ${outerStart.P0.y} `+
-         `Q ${outerStart.C.x} ${outerStart.C.y} ${outerStart.P2.x} ${outerStart.P2.y} `+
+  // This overlay traces the loop's own true outline, so it has to be
+  // trimmed to the same hub-matched corners as the real spaces (see
+  // buildFlankWedgePaths) - otherwise it's back to being a slightly wrong
+  // shape overlaid on top of a now-different real outline, the exact
+  // "ghost of the old shape" bug from earlier tonight, just with new
+  // geometry underneath it.
+  const outerLoT = solveHubTrimT(outerStart.P0,outerStart.C,outerStart.P2,true);
+  const innerLoT = solveHubTrimT(innerStart.P0,innerStart.C,innerStart.P2,true);
+  const outerHiT = solveHubTrimT(outerEnd.P0,outerEnd.C,outerEnd.P2,false);
+  const innerHiT = solveHubTrimT(innerEnd.P0,innerEnd.C,innerEnd.P2,false);
+  const outerLoPt = quadBezierPoint(outerStart.P0,outerStart.C,outerStart.P2,outerLoT);
+  const innerLoPt = quadBezierPoint(innerStart.P0,innerStart.C,innerStart.P2,innerLoT);
+  const outerHiPt = quadBezierPoint(outerEnd.P0,outerEnd.C,outerEnd.P2,outerHiT);
+  const innerHiPt = quadBezierPoint(innerEnd.P0,innerEnd.C,innerEnd.P2,innerHiT);
+  const [,oStartC,oStartP2] = quadBezierSubsegment(outerStart.P0,outerStart.C,outerStart.P2,outerLoT,1);
+  const [,iStartC,iStartP2] = quadBezierSubsegment(innerStart.P0,innerStart.C,innerStart.P2,innerLoT,1);
+  const [,oEndC] = quadBezierSubsegment(outerEnd.P0,outerEnd.C,outerEnd.P2,0,outerHiT);
+  const [,iEndC] = quadBezierSubsegment(innerEnd.P0,innerEnd.C,innerEnd.P2,0,innerHiT);
+  const arcHi = hubArcPolyline(outerHiPt, innerHiPt);
+  const arcLo = hubArcPolyline(innerLoPt, outerLoPt);
+  return `M ${outerLoPt.x} ${outerLoPt.y} `+
+         `Q ${oStartC.x} ${oStartC.y} ${oStartP2.x} ${oStartP2.y} `+
          `A ${rOut} ${rOut} 0 ${midLarge} 1 ${oMid2.x} ${oMid2.y} `+
-         `Q ${outerEnd.C.x} ${outerEnd.C.y} ${outerEnd.P2.x} ${outerEnd.P2.y} `+
-         `L ${innerEnd.P2.x} ${innerEnd.P2.y} `+
-         `Q ${innerEnd.C.x} ${innerEnd.C.y} ${iMid2.x} ${iMid2.y} `+
+         `Q ${oEndC.x} ${oEndC.y} ${outerHiPt.x} ${outerHiPt.y} `+
+         arcHi.map(p=>`L ${p.x} ${p.y}`).join(' ') + ` L ${innerHiPt.x} ${innerHiPt.y} `+
+         `Q ${iEndC.x} ${iEndC.y} ${iMid2.x} ${iMid2.y} `+
          `A ${rIn} ${rIn} 0 ${midLarge} 0 ${iMid1.x} ${iMid1.y} `+
-         `Q ${innerStart.C.x} ${innerStart.C.y} ${innerStart.P0.x} ${innerStart.P0.y} Z`;
+         `Q ${iStartC.x} ${iStartC.y} ${innerLoPt.x} ${innerLoPt.y} `+
+         arcLo.map(p=>`L ${p.x} ${p.y}`).join(' ') + ' Z';
 }
 
 // master track: 0-15 left loop, 16-19 hub, 20-35 right loop
