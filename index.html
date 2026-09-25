@@ -706,7 +706,7 @@ function buildBoardDefs(){
   // per side (see appendPiece).
   for(const [id, icon] of Object.entries(PIECE_ICONS)){
     for(const layer of ['sil','lines']){
-      const sym = el('symbol',{id:`icon-${id}-${layer}`, viewBox:icon.vb});
+      const sym = el('symbol',{id:`icon-${id}-${layer}`, viewBox:icon.vb, preserveAspectRatio:'none'});
       const g = el('g',{transform:icon.g});
       icon[layer].forEach(d=>g.appendChild(el('path',{d})));
       sym.appendChild(g);
@@ -1912,7 +1912,17 @@ function el(tag,attrs){
 // Black a dark body with cream details and a lighter outline so it still
 // reads on the near-black spaces. Homecoming copies share their base piece's
 // icon. Pieces without an icon yet (the Persons) keep the lettered disc.
-const PIECE_ICON_MAX_H = 46; // height of the tallest icon (elf); the rest follow the height ladder
+// Big screens show the icons in their drawn proportions. A phone held
+// sideways shrinks the whole board to ~480px wide, where the interior lines
+// fall to a third of a pixel - so there the pieces get a boost: taller, a
+// gentler height ladder (the short pieces grow most), wider figures, heavier
+// lines and outline, and a bigger tap area. maxH is the tallest piece (elf).
+const PIECE_SIZING = {
+  normal: {maxH:46, ladderFloor:null, widen:1.0, outline:1.3, lineBoost:0,   hitR:20},
+  phone:  {maxH:54, ladderFloor:0.66, widen:1.2, outline:1.7, lineBoost:1.2, hitR:26},
+};
+const PHONE_SCREEN = window.matchMedia('(max-height: 500px)');
+const LADDER_MIN = Math.min(...Object.values(PIECE_ICONS).map(icon=>icon.scale));
 const PIECE_LOOK = {
   white: {body:'#f4ecd8', lines:'#1C1712', outline:'#2c2018'},
   black: {body:'#1C1712', lines:'#efe3c8', outline:'#a08a66'},
@@ -1934,16 +1944,22 @@ function appendPiece(parent, def, cx, cy, color, selected){
     return;
   }
   const look = PIECE_LOOK[color];
-  const h = PIECE_ICON_MAX_H * icon.scale, w = h * icon.aspect;
+  const size = PHONE_SCREEN.matches ? PIECE_SIZING.phone : PIECE_SIZING.normal;
+  const ladder = size.ladderFloor===null ? icon.scale
+    : size.ladderFloor + (icon.scale - LADDER_MIN) / (1 - LADDER_MIN) * (1 - size.ladderFloor);
+  const h = size.maxH * ladder, w = h * icon.aspect * size.widen;
   const box = {x:cx-w/2, y:cy-h/2, width:w, height:h};
   // Stroke widths are given in board units; the icon's own coordinates are
   // scaled by 0.1 (potrace) and then by the symbol's viewBox, so convert.
   const toLocal = units => units / (0.1 * h / icon.vbh);
   // An invisible hit area keeps the slimmer figures as easy to click as the old discs.
-  parent.appendChild(el('circle',{cx, cy, r:20, fill:'transparent'}));
+  parent.appendChild(el('circle',{cx, cy, r:size.hitR, fill:'transparent'}));
   if(selected) parent.appendChild(useIcon(iconId+'-sil', box, {fill:'none', stroke:'var(--gold-bright)', 'stroke-width':toLocal(6), 'stroke-linejoin':'round'}));
-  parent.appendChild(useIcon(iconId+'-sil', box, {fill:look.body, stroke:look.outline, 'stroke-width':toLocal(1.3), 'stroke-linejoin':'round'}));
-  parent.appendChild(useIcon(iconId+'-lines', box, {fill:look.lines}));
+  parent.appendChild(useIcon(iconId+'-sil', box, {fill:look.body, stroke:look.outline, 'stroke-width':toLocal(size.outline), 'stroke-linejoin':'round'}));
+  // On phones the interior lines are also stroked in their own colour, which thickens them.
+  const lineAttrs = {fill:look.lines};
+  if(size.lineBoost) Object.assign(lineAttrs, {stroke:look.lines, 'stroke-width':toLocal(size.lineBoost), 'stroke-linejoin':'round'});
+  parent.appendChild(useIcon(iconId+'-lines', box, lineAttrs));
 }
 
 let simulatingBot = false; // true while the bot is exploring hypothetical moves on a cloned state - render() is a no-op then, so the real board never flickers through fake positions
