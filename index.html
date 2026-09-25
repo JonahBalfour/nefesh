@@ -1152,6 +1152,7 @@ function resetState(){
     winReason:'',
     isDraw:false,
     log:[],
+    lastMove:null, // {color, pieceId, from, to} - master space indices, or 'bench' / 'infinite' / 'lost'
     homecomingGranted:{white:{creature:false,dwarf:false,man:false,elf:false}, black:{creature:false,dwarf:false,man:false,elf:false}},
     pieces:{ white:freshPieces(), black:freshPieces() }
   };
@@ -1173,9 +1174,30 @@ function roundRoller(){
   return state.firstMover==='white' ? 'black' : 'white';
 }
 
+function colorName(color){ return color==='white'?'White':'Black'; }
+function spotName(spot){
+  if(spot==='bench') return 'the bench';
+  if(spot==='infinite') return 'the Infinite';
+  if(spot==='lost') return 'off the board';
+  return displayLabel(spot);
+}
+// Remember (and log) every placement and move, not just captures, so it's
+// always clear what just happened - especially after the computer's turn.
+// Skipped while the bot is searching hypothetical moves, since those aren't real.
+function recordMove(color, pieceId, from, to){
+  if(simulatingBot) return;
+  state.lastMove = {color, pieceId, from, to};
+  log(describeMove(state.lastMove));
+}
+function describeMove(mv){
+  const label = getDef(mv.pieceId).label;
+  if(mv.from==='bench') return `${colorName(mv.color)} places ${label} on ${spotName(mv.to)}.`;
+  return `${colorName(mv.color)} moves ${label} ${spotName(mv.from)} → ${spotName(mv.to)}.`;
+}
+
 function log(msg){
   state.log.unshift(msg);
-  if(state.log.length>60) state.log.pop();
+  if(state.log.length>500) state.log.pop(); // roomy enough for a whole game now that every move is logged
 }
 
 // ---------- move/capture/win sound effects ----------
@@ -1326,6 +1348,12 @@ function canPlaceAnyBenchPiece(color){
   return !soulCaptureBlocked(occupantsAtMaster(START_MASTER[color]));
 }
 
+// True when the person at the screen may act for this color right now: it's
+// that color's turn, the game isn't over, and it isn't the computer's color.
+function humanCanAct(color){
+  return !state.winner && currentMover()===color && color!==botColor;
+}
+
 function hasAnyLegalAction(color){
   if(canPlaceAnyBenchPiece(color)) return true;
   return PIECE_DEFS.some(d=>{
@@ -1355,6 +1383,7 @@ function placePiece(color, pieceId){
   const startMaster = START_MASTER[color];
   const occ = occupantsAtMaster(startMaster);
   if(soulCaptureBlocked(occ)) return;
+  recordMove(color, pieceId, 'bench', startMaster);
   occ.forEach(o=>{
     state.pieces[o.color][o.pieceId].status='captured';
     if(o.pieceId==='body'){ state.bodyCaptured[o.color]=true; }
@@ -1373,7 +1402,6 @@ function placePiece(color, pieceId){
   });
   p.status='onboard';
   p.progress=0;
-  log(`${color==='white'?'White':'Black'} places ${getDef(pieceId).label} on Placement.`);
   if(state.winner) playWinSound();
   else if(occ.length>0) playCaptureSound();
   else playMoveSound();
@@ -1396,6 +1424,9 @@ function triggerHomecoming(color, baseId){
 function performMove(color, pieceId, move){
   const p = state.pieces[color][pieceId];
   const def = getDef(pieceId);
+  const fromMaster = pathToMaster(color, p.progress);
+  const toSpot = move.kind==='soul-win' ? 'infinite' : move.kind==='soul-overshoot-capture' ? 'lost' : move.masterIdx;
+  recordMove(color, pieceId, fromMaster, toSpot);
 
   if(move.kind==='soul-win'){
     p.progress = move.newProgress;
@@ -2161,6 +2192,14 @@ function renderBoard(){
     const wedgeAttrs = {d:vis.path, fill, stroke:'#5c422c','stroke-width':2.8};
     const wedge = el('path',wedgeAttrs);
     g.appendChild(wedge);
+    // Last move: a dashed outline where the piece came from, a solid one
+    // where it landed, so the previous turn (often the computer's) is easy to see.
+    const lm = state.lastMove;
+    if(lm && (lm.from===sp.idx || lm.to===sp.idx)){
+      const landed = lm.to===sp.idx;
+      g.appendChild(el('path',{d:vis.path, fill: landed ? 'rgba(224,178,90,0.18)' : 'none', stroke:'var(--gold-bright)',
+        'stroke-width':3, 'stroke-dasharray': landed ? 'none' : '6 4', 'pointer-events':'none'}));
+    }
     if(isHub && sp.isStart){
       const dotColor = sp.isStart==='white' ? '#f4ecd8' : '#141110';
       g.appendChild(el('circle',{cx:vis.x, cy:vis.y, r:10, fill:dotColor, stroke:'#8a7757','stroke-width':2}));
@@ -2189,8 +2228,7 @@ function renderBoard(){
       const ring = el('path',ringAttrs);
       ring.classList.add('legal-move-space');
       const handler = ()=>{
-        const mover = currentMover();
-        if(mover!==state.selected.color) return;
+        if(!state.selected || !humanCanAct(state.selected.color)) return;
         if(move.kind==='bench-placement') placePiece(state.selected.color, state.selected.pieceId);
         else performMove(state.selected.color, state.selected.pieceId, legalTargets[sp.idx]);
       };
@@ -2230,8 +2268,7 @@ function renderBoard(){
     const winRing = el('circle',{cx:INFINITE_PT.x, cy:INFINITE_PT.y, r:INF_R+8, fill:'rgba(224,178,90,0.28)', stroke:'var(--gold-bright)','stroke-width':5});
     winRing.classList.add('legal-move-space');
     const handler = ()=>{
-      const mover = currentMover();
-      if(mover!==state.selected.color) return;
+      if(!state.selected || !humanCanAct(state.selected.color)) return;
       performMove(state.selected.color, state.selected.pieceId, winMove);
     };
     winRing.addEventListener('click',handler);
@@ -2285,8 +2322,15 @@ function renderBoard(){
       appendPiece(g, def, pt.x, pt.y, color, isSel);
       g.addEventListener('click',(e)=>{
         e.stopPropagation();
-        const mover = currentMover();
-        if(mover!==color || state.winner) return;
+        // This piece stands on a highlighted target (a capture, or a
+        // self-capture) - tapping it makes that move, same as tapping the space.
+        const target = legalTargets[m];
+        if(target && state.selected && humanCanAct(state.selected.color)){
+          if(target.kind==='bench-placement') placePiece(state.selected.color, state.selected.pieceId);
+          else performMove(state.selected.color, state.selected.pieceId, target);
+          return;
+        }
+        if(!humanCanAct(color)) return;
         if(!state.dice){ return; }
         state.selected = isSel? null : {color, pieceId:def.id};
         render();
@@ -2361,8 +2405,7 @@ function benchTrayXY(color){
 
 function renderBenchTray(color){
   const {x,y} = benchTrayXY(color);
-  const mover = currentMover();
-  const canAct = mover===color && !state.winner;
+  const canAct = humanCanAct(color);
   const g = el('g',{});
   g.appendChild(el('rect',{x, y, width:BENCH_TRAY_W, height:BENCH_TRAY_H, rx:8, fill:'#2c2018', stroke:'#5c422c', 'stroke-width':3}));
   const benchPieces = PIECE_DEFS.filter(d=>state.pieces[color][d.id].status==='bench');
@@ -2438,7 +2481,9 @@ function renderControls(){
     status.textContent = `${mover} has no legal placement or move.`;
   } else {
     passBtn.disabled=true;
-    status.textContent = state.dice ? '' : `${roundRoller()==='white'?'White':'Black'} rolls to begin the round.`;
+    const lastMoveText = state.lastMove ? describeMove(state.lastMove) : '';
+    const rollText = state.dice ? '' : `${roundRoller()==='white'?'White':'Black'} rolls to begin the round.`;
+    status.textContent = [lastMoveText, rollText].filter(Boolean).join(' ');
   }
 }
 
